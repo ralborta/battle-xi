@@ -125,7 +125,7 @@ export default function HomePage() {
 
           {/* CTAs */}
           <div className="mt-8 w-full max-w-sm space-y-3">
-            <Link href="/jugar" className="block">
+            <Link href="/onboarding" className="block">
               <Button variant="cyan" size="xl" fullWidth icon={<Play className="w-5 h-5 fill-current" />}>
                 Jugar
               </Button>

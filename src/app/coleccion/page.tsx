@@ -1,3 +1,4 @@
+import { GameGate } from "@/components/GameGate";
 import { BottomNav } from "@/components/BottomNav";
 import { PageShell } from "@/components/PageShell";
 import { PlayerCard } from "@/components/PlayerCard";
@@ -16,6 +17,7 @@ const SAMPLE = [
 
 export default function ColeccionPage() {
   return (
+    <GameGate>
     <>
       <PageShell title="Mi Colección" subtitle={`${SAMPLE.length} cartas · 2 listas para mejorar`}>
         <div className="mb-6">
@@ -66,5 +68,6 @@ export default function ColeccionPage() {
       </PageShell>
       <BottomNav />
     </>
+    </GameGate>
   );
 }

@@ -1,3 +1,4 @@
+import { GameGate } from "@/components/GameGate";
 import { BottomNav } from "@/components/BottomNav";
 import { PageShell } from "@/components/PageShell";
 import { Button } from "@/components/Button";
@@ -39,6 +40,7 @@ const POWERS = [
 
 export default function TiendaPage() {
   return (
+    <GameGate>
     <>
       <PageShell title="Tienda" subtitle="Gastá gemas, no plata real">
         <div className="relative overflow-hidden rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/15 to-violet-500/10 p-4 mb-6">
@@ -150,5 +152,6 @@ export default function TiendaPage() {
       </PageShell>
       <BottomNav />
     </>
+    </GameGate>
   );
 }

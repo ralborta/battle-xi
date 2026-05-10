@@ -1,3 +1,4 @@
+import { GameGate } from "@/components/GameGate";
 import { BottomNav } from "@/components/BottomNav";
 import { PageShell } from "@/components/PageShell";
 import { Trophy3D } from "@/components/Trophy3D";
@@ -6,6 +7,7 @@ import { Trophy, Calendar, Crown } from "lucide-react";
 
 export default function TorneosPage() {
   return (
+    <GameGate>
     <>
       <PageShell title="Torneos" subtitle="La copa te espera">
         <div className="relative flex flex-col items-center mb-6 pt-2">
@@ -83,5 +85,6 @@ export default function TorneosPage() {
       </PageShell>
       <BottomNav />
     </>
+    </GameGate>
   );
 }

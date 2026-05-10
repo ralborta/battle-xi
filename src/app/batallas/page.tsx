@@ -1,3 +1,4 @@
+import { GameGate } from "@/components/GameGate";
 import { BottomNav } from "@/components/BottomNav";
 import { PageShell } from "@/components/PageShell";
 import { Button } from "@/components/Button";
@@ -32,6 +33,7 @@ const MODES = [
 
 export default function BatallasPage() {
   return (
+    <GameGate>
     <>
       <PageShell title="Batallas" subtitle="Elegí tu modo y conquistá la cancha">
         <div className="grid grid-cols-3 gap-2 mb-6">
@@ -111,5 +113,6 @@ export default function BatallasPage() {
       </PageShell>
       <BottomNav />
     </>
+    </GameGate>
   );
 }

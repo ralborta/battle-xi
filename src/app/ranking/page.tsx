@@ -1,3 +1,4 @@
+import { GameGate } from "@/components/GameGate";
 import { BottomNav } from "@/components/BottomNav";
 import { PageShell } from "@/components/PageShell";
 import { Crown, TrendingUp } from "lucide-react";
@@ -23,6 +24,7 @@ const MEDAL: Record<number, string> = {
 
 export default function RankingPage() {
   return (
+    <GameGate>
     <>
       <PageShell title="Ranking" subtitle="Global · Semana actual">
         <div className="flex gap-2 mb-5">
@@ -123,5 +125,6 @@ export default function RankingPage() {
       </PageShell>
       <BottomNav />
     </>
+    </GameGate>
   );
 }

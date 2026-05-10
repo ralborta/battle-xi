@@ -49,6 +49,13 @@ export default function LoginPage() {
             </Button>
           </Link>
 
+          <Link
+            href="/onboarding"
+            className="block mt-4 text-center text-sm text-cyan-300/90 hover:text-cyan-200 font-body transition"
+          >
+            ¿Primera vez? Creá tu cuenta y activá la cámara
+          </Link>
+
           <p className="mt-4 text-center text-[11px] text-text-muted">
             Pedimos email del adulto solo para recuperar tu cuenta.
           </p>
