@@ -3,6 +3,7 @@ import { BottomNav } from "@/components/BottomNav";
 import { PageShell } from "@/components/PageShell";
 import { Button } from "@/components/Button";
 import { Swords, Zap, Users, Clock } from "lucide-react";
+import Link from "next/link";
 
 const MODES = [
   {
@@ -62,6 +63,7 @@ export default function BatallasPage() {
         <div className="space-y-4">
           {MODES.map((m) => {
             const Icon = m.icon;
+            const isQuick = m.title === "Batalla Rápida";
             return (
               <div
                 key={m.title}
@@ -97,15 +99,28 @@ export default function BatallasPage() {
                     </p>
                   </div>
                 </div>
-                <Button
-                  variant={m.variant}
-                  size="md"
-                  fullWidth
-                  className="mt-4"
-                  icon={<Swords className="w-4 h-4" />}
-                >
-                  Competir
-                </Button>
+                {isQuick ? (
+                  <Link href="/batallas/emulada" className="block mt-4">
+                    <Button
+                      variant={m.variant}
+                      size="md"
+                      fullWidth
+                      icon={<Swords className="w-4 h-4" />}
+                    >
+                      Competir
+                    </Button>
+                  </Link>
+                ) : (
+                  <Button
+                    variant={m.variant}
+                    size="md"
+                    fullWidth
+                    className="mt-4"
+                    icon={<Swords className="w-4 h-4" />}
+                  >
+                    Competir
+                  </Button>
+                )}
               </div>
             );
           })}
