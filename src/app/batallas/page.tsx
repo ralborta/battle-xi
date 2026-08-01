@@ -10,6 +10,15 @@ import { redirect } from "next/navigation";
 
 const MODES = [
   {
+    title: "Fútbol 5",
+    desc: "Armá tu equipo, jugá por momentos e impulso. Sumás puntos.",
+    reward: "Modo principal · torneos más adelante",
+    icon: Users,
+    variant: "gold" as const,
+    accent: "from-amber-400/20 to-amber-600/10",
+    href: "/equipo",
+  },
+  {
     title: "Batalla Rápida",
     desc: "Duelo 1 vs 1 contra la carta de otro club",
     reward: `+150 XP · 25 gemas · cuesta ${ENERGY_PER_BATTLE} de energía`,
@@ -25,15 +34,6 @@ const MODES = [
     icon: Clock,
     variant: "violet" as const,
     accent: "from-violet-500/20 to-violet-700/10",
-    href: null,
-  },
-  {
-    title: "Equipo vs Equipo",
-    desc: "Tu XI completo contra otro XI",
-    reward: "En preparación",
-    icon: Users,
-    variant: "gold" as const,
-    accent: "from-amber-400/20 to-amber-600/10",
     href: null,
   },
 ];

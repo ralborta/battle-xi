@@ -2,9 +2,10 @@ import { BottomNav } from "@/components/BottomNav";
 import { PageShell } from "@/components/PageShell";
 import { getCurrentUser } from "@/lib/auth";
 import { ENERGY_MAX, ENERGY_REFILL_COST, currentEnergy } from "@/lib/game";
-import { Gem, Package, ScanLine } from "lucide-react";
+import { Gem, ScanLine } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { AbrirSobre } from "./AbrirSobre";
 import { RecargarEnergia } from "./RecargarEnergia";
 
 export default async function TiendaPage() {
@@ -30,7 +31,7 @@ export default async function TiendaPage() {
                 {user.gems}
               </p>
               <p className="mt-2 text-[11px] text-text-tertiary font-body">
-                Ganás gemas cada vez que jugás un duelo.
+                Ganás gemas jugando partidos y duelos.
               </p>
             </div>
             <Gem
@@ -41,6 +42,11 @@ export default async function TiendaPage() {
         </div>
 
         <h2 className="font-display text-lg tracking-wide text-text-secondary mb-3">
+          Sobres
+        </h2>
+        <AbrirSobre gems={user.gems} />
+
+        <h2 className="font-display text-lg tracking-wide text-text-secondary mt-7 mb-3">
           Mejoras
         </h2>
         <RecargarEnergia
@@ -50,28 +56,13 @@ export default async function TiendaPage() {
           cost={ENERGY_REFILL_COST}
         />
 
-        <h2 className="font-display text-lg tracking-wide text-text-secondary mt-7 mb-3">
-          Sobres
-        </h2>
-        <div className="rounded-2xl border border-border-soft bg-white/5 p-5 text-center">
-          <div className="mx-auto flex items-center justify-center w-12 h-12 rounded-xl bg-violet-500/15 border border-violet-500/30">
-            <Package className="w-6 h-6 text-violet-300" />
-          </div>
-          <p className="mt-3 font-display text-lg text-text-primary">
-            Los sobres llegan más adelante
-          </p>
-          <p className="mt-1 text-sm text-text-tertiary font-body">
-            Por ahora las cartas se consiguen de una sola manera: escaneando figuritas de
-            verdad.
-          </p>
-          <Link
-            href="/escanear"
-            className="mt-4 inline-flex items-center gap-2 h-11 px-5 rounded-xl bg-cyan-400/15 border border-cyan-400/40 text-cyan-200 text-sm font-display tracking-wider uppercase hover:bg-cyan-400/25 transition active:scale-95"
-          >
-            <ScanLine className="w-4 h-4" />
-            Escanear una figurita
-          </Link>
-        </div>
+        <Link
+          href="/escanear"
+          className="mt-6 flex items-center justify-center gap-2 h-11 rounded-xl bg-cyan-400/10 border border-cyan-400/30 text-cyan-200 text-sm font-display tracking-wider uppercase"
+        >
+          <ScanLine className="w-4 h-4" />
+          También podés escanear figuritas
+        </Link>
       </PageShell>
       <BottomNav />
     </>

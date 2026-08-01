@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Battle XI — Estado actual y propuesta de modo Equipo</title>
+  <style>
+    body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; line-height: 1.45; color: #111; max-width: 800px; margin: 40px auto; padding: 0 24px; }
+    h1 { font-size: 22pt; color: #0a1228; border-bottom: 2px solid #22d3ee; padding-bottom: 8px; }
+    h2 { font-size: 14pt; color: #0a1228; margin-top: 28px; }
+    h3 { font-size: 12pt; color: #1e293b; margin-top: 18px; }
+    p, li { font-size: 11pt; }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0 20px; font-size: 10.5pt; }
+    th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #0a1228; color: #fff; }
+    tr:nth-child(even) td { background: #f8fafc; }
+    .meta { color: #64748b; font-size: 10pt; margin-bottom: 24px; }
+    .box { background: #f1f5f9; border-left: 4px solid #22d3ee; padding: 12px 16px; margin: 16px 0; }
+    .note { background: #fff7ed; border-left: 4px solid #f59e0b; padding: 12px 16px; margin: 16px 0; }
+    ul { margin-top: 6px; }
+    .footer { margin-top: 36px; font-size: 9.5pt; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 12px; }
+  </style>
+</head>
+<body>
+
+<h1>Battle XI — Estado actual y propuesta de modo Equipo</h1>
+<p class="meta">
+  Documento de trabajo para investigación y definición de producto.<br />
+  Fecha: 1 de agosto de 2026 · Proyecto: Battle XI · URL producción: https://battlexi.nivel41.com
+</p>
+
+<div class="box">
+  <strong>Objetivo de este documento:</strong> resumir qué hay hoy en el producto, qué problemas detectamos
+  (sobre todo en el escaneo de figuritas) y proponer un nuevo modo de juego de equipo basado en cartas,
+  formación de fútbol y apuestas con información oculta — alineado a buenas prácticas del mercado.
+</div>
+
+<!-- ============================================================ -->
+<h2>1. Qué es Battle XI</h2>
+<p>
+  Battle XI es un juego móvil/web pensado para chicos: escanean figuritas reales con la cámara,
+  las convierten en cartas digitales con estadísticas, coleccionan, compiten y progresan
+  (gemas, energía, trofeos, niveles).
+</p>
+<p>
+  Está desplegado en Easypanel (Hostinger VPS), con dominio propio
+  <strong>battlexi.nivel41.com</strong>, base Postgres, almacenamiento de imágenes (MinIO) y
+  posibilidad de instalarse como app en el celular (PWA).
+</p>
+
+<!-- ============================================================ -->
+<h2>2. Qué tenemos hoy (estado actual)</h2>
+
+<h3>2.1 Cuentas y progresión</h3>
+<ul>
+  <li>Registro con apodo, email del adulto y PIN de 4 dígitos.</li>
+  <li>Sesión por cookie firmada.</li>
+  <li>Economía básica: gemas, XP, trofeos, rachas, victorias/derrotas/empates.</li>
+  <li>Energía con tope y regeneración en el tiempo (sin cron: se recalcula al usarla).</li>
+  <li>Tienda mínima: recarga de energía con gemas. Sobres y packs marcados como “más adelante”.</li>
+</ul>
+
+<h3>2.2 Escaneo de figuritas</h3>
+<ul>
+  <li>Cámara del celular + OCR en el dispositivo (Tesseract.js).</li>
+  <li>El chico confirma nombre, posición y bandera; se sube la foto y se crea la carta.</li>
+  <li>Las estadísticas (rating, rareza, VEL/TIR/PAS/REG/DEF/FIS) se generan de forma determinística
+      a partir de una semilla y la posición elegida (no salen de la figurita en sí).</li>
+</ul>
+
+<div class="note">
+  <strong>Problema conocido:</strong> el OCR lee toda la foto y a menudo sugiere nombres incorrectos
+  (club, número, publicidad, basura del brillo). Es uno de los próximos frentes de mejora
+  (marco de captura, confirmación, filtros, eventual catálogo o visión con IA).
+</div>
+
+<h3>2.3 Modo de batalla actual: 1 vs 1 (carta vs carta)</h3>
+<ul>
+  <li>Matchmaking: prioriza cartas de otros jugadores con rating parecido; si no hay, rival del sistema (bot).</li>
+  <li>Cuesta energía.</li>
+  <li>4 rondas: el jugador elige una estadística por ronda (sin repetir).</li>
+  <li>El servidor resuelve con stats + bonus de nivel + “empuje” aleatorio pequeño y determinístico.</li>
+  <li>Al terminar: gemas, XP, trofeos y XP de la carta.</li>
+</ul>
+<p>
+  Sensación: arcade de cartas, decisión por decisión. Funciona bien como modo rápido.
+</p>
+
+<h3>2.4 Otras pantallas</h3>
+<ul>
+  <li><strong>Colección:</strong> cartas reales del usuario.</li>
+  <li><strong>Ranking:</strong> top por trofeos (datos reales).</li>
+  <li><strong>Torneos / Reto del día / Equipo vs Equipo:</strong> anunciados como “muy pronto” o en preparación.</li>
+  <li><strong>Jugar:</strong> home con gemas, energía, capitán (mejor carta) y accesos.</li>
+</ul>
+
+<h3>2.5 Infraestructura</h3>
+<ul>
+  <li>Next.js (App Router) + Prisma + Postgres + MinIO.</li>
+  <li>Deploy automático desde GitHub a Easypanel.</li>
+  <li>HTTPS con Let’s Encrypt en battlexi.nivel41.com.</li>
+  <li>Backup diario automático de la base Postgres.</li>
+  <li>App instalable (manifest + íconos + imagen para compartir).</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2>3. Qué queremos lograr a continuación</h2>
+<ol>
+  <li>Mejorar la calidad del escaneo (nombres creíbles y confirmación clara).</li>
+  <li>Dar sentido a tener muchas cartas: <strong>armar un equipo (XI)</strong>.</li>
+  <li>Un segundo modo de juego, distinto al 1 vs 1, con lógica de <strong>cartas + fútbol + apuesta</strong>.</li>
+</ol>
+
+<!-- ============================================================ -->
+<h2>4. Propuesta: modo Equipo (juego de cartas con criterio de fútbol)</h2>
+
+<h3>4.1 Idea central</h3>
+<p>
+  El modo Equipo no replica el 1 vs 1 ni simula un FIFA. Es un <strong>minijuego de cartas</strong>
+  donde:
+</p>
+<ul>
+  <li>Armás un <strong>once (XI)</strong> con puestos de fútbol reales.</li>
+  <li>El valor del rival está <strong>parcialmente oculto</strong>.</li>
+  <li>En cada jugada <strong>apostás</strong> parte de tu pozo e <strong>intentás acertar</strong>
+      el poder de una zona rival.</li>
+  <li>Gana quien suma más puntos después de pocas jugadas (sesión corta).</li>
+</ul>
+
+<div class="box">
+  Referencias de mercado que inspiran la mecánica (no son copias literales):
+  <ul>
+    <li><strong>Marvel Snap</strong> — tensión por subir apuesta / compromiso de puntos en pocas rondas.</li>
+    <li><strong>Póker / juegos de farol</strong> — decisión con información incompleta.</li>
+    <li><strong>Top Trumps / batallas de stats</strong> — distintos atributos según el rol.</li>
+    <li><strong>FIFA Ultimate Team / eFootball</strong> — formación, puestos y “química” simple (el puesto importa).</li>
+  </ul>
+</div>
+
+<h3>4.2 Armado del equipo (XI)</h3>
+<table>
+  <tr>
+    <th>Zona</th>
+    <th>Cantidad</th>
+    <th>Stats que pesan en esa zona</th>
+  </tr>
+  <tr>
+    <td>POR (arquero)</td>
+    <td>1</td>
+    <td>DEF, FIS</td>
+  </tr>
+  <tr>
+    <td>DEF (defensa)</td>
+    <td>4</td>
+    <td>DEF, FIS, PAS</td>
+  </tr>
+  <tr>
+    <td>MC (mediocampo)</td>
+    <td>3</td>
+    <td>PAS, REG, DEF</td>
+  </tr>
+  <tr>
+    <td>DEL / EXT (ataque)</td>
+    <td>3</td>
+    <td>TIR, VEL, REG</td>
+  </tr>
+</table>
+<p>
+  Una carta fuera de puesto rinde peor. Así el criterio de fútbol no es cosmético:
+  hay que escanear y ubicar bien, no solo juntar ratings altos.
+</p>
+<p>
+  <strong>Requisito de entrada al modo:</strong> tener XI completo. Mientras tanto, el 1 vs 1 sigue disponible.
+</p>
+
+<h3>4.3 Estilo de juego (opcional, 1 decisión)</h3>
+<table>
+  <tr>
+    <th>Estilo</th>
+    <th>Efecto</th>
+  </tr>
+  <tr>
+    <td>Ataque</td>
+    <td>Sube el poder ofensivo; baja un poco la defensa.</td>
+  </tr>
+  <tr>
+    <td>Equilibrio</td>
+    <td>Sin modificadores.</td>
+  </tr>
+  <tr>
+    <td>Defensa</td>
+    <td>Sube el poder defensivo; baja un poco el ataque.</td>
+  </tr>
+</table>
+
+<h3>4.4 Cómo se juega el partido (3 jugadas)</h3>
+<p>
+  No se adivina once veces (sería largo y frustrante). El partido tiene
+  <strong>3 jugadas</strong> (= 3 ataques / momentos clave).
+</p>
+<ol>
+  <li>Elegís una <strong>zona rival</strong> para “atacar”: POR, DEF, MC o DEL.</li>
+  <li>Ves información <strong>parcial</strong> (por ejemplo foto, posición, rareza; no el número clave).</li>
+  <li><strong>Apostás</strong> una parte de tu pozo (el pozo se deriva del valor de tu equipo / zona).</li>
+  <li><strong>Declarás un número</strong>: el “poder de zona” del rival (número calculado con las stats del rol).</li>
+  <li>Resolución:
+    <ul>
+      <li><strong>Exacto</strong> → premio alto (ganás la apuesta con bonus).</li>
+      <li><strong>Cerca (±2)</strong> → premio menor.</li>
+      <li><strong>Fuera</strong> → el rival se queda con tu apuesta.</li>
+    </ul>
+  </li>
+</ol>
+<p>
+  Al terminar las 3 jugadas, gana quien tiene más puntos.
+</p>
+
+<h3>4.5 Qué es el “poder de zona”</h3>
+<p>
+  No es un número mágico suelto. Se calcula a partir de las cartas de esa zona y las stats
+  que corresponden al rol (ver tabla 4.2). Ejemplo conceptual:
+</p>
+<ul>
+  <li>Atacás la DEF rival → importa el poder defensivo (DEF + FIS, etc.).</li>
+  <li>Atacás el ataque rival → importa TIR + VEL, etc.</li>
+</ul>
+<p>
+  Tu capacidad de apostar fuerte también puede estar limitada por la fuerza de tu zona “espejo”
+  (si atacás su defensa, tu delantera marca cuánto podés arriesgar). Así las buenas cartas
+  sirven para <em>arriesgar más</em>, no solo para tener suerte adivinando.
+</p>
+
+<h3>4.6 Ejemplo de partida</h3>
+<ol>
+  <li>Tu equipo genera un pozo de 100. Rival similar.</li>
+  <li>Jugada 1: atacás su DEF, apostás 25, decís “78”. Era 78 → sumás puntos.</li>
+  <li>Jugada 2: atacás su POR, apostás 40, fallás → el rival cobra tu apuesta.</li>
+  <li>Jugada 3: última apuesta sobre su DEL. Cierra el marcador.</li>
+  <li>Gana quien acumuló más puntos. Recompensas (gemas/XP/trofeos) mayores que el 1 vs 1,
+      porque exige XI y más compromiso.</li>
+</ol>
+
+<!-- ============================================================ -->
+<h2>5. Comparación de modos</h2>
+<table>
+  <tr>
+    <th></th>
+    <th>Batalla rápida (hoy)</th>
+    <th>Modo Equipo (propuesta)</th>
+  </tr>
+  <tr>
+    <td>Unidad</td>
+    <td>1 carta</td>
+    <td>XI (11 cartas en puestos)</td>
+  </tr>
+  <tr>
+    <td>Decisión principal</td>
+    <td>Qué estadística jugar en cada ronda</td>
+    <td>A quién atacar, cuánto apostar, qué número declarar</td>
+  </tr>
+  <tr>
+    <td>Información</td>
+    <td>Ves tus stats; el rival revela al jugar</td>
+    <td>Info parcial del rival; hay que leer e interpretar</td>
+  </tr>
+  <tr>
+    <td>Riesgo</td>
+    <td>Bajo (elige bien o mal la stat)</td>
+    <td>Alto y explícito (la apuesta se puede perder)</td>
+  </tr>
+  <tr>
+    <td>Sensación</td>
+    <td>Arcade / duelo</td>
+    <td>Cartas + farol + fútbol</td>
+  </tr>
+  <tr>
+    <td>Duración</td>
+    <td>~4 rondas activas</td>
+    <td>~3 jugadas de apuesta</td>
+  </tr>
+</table>
+
+<!-- ============================================================ -->
+<h2>6. Buenas prácticas del mercado que aplicamos</h2>
+<ul>
+  <li><strong>Sesiones cortas:</strong> 3 jugadas, no 11 adivinanzas.</li>
+  <li><strong>Feedback claro:</strong> acierto exacto / cerca / fallo, con resultado muy visible.</li>
+  <li><strong>Progresión con sentido:</strong> escanear sirve para completar puestos del XI, no solo “tener otra carta”.</li>
+  <li><strong>Dos loops que no se pisan:</strong> 1 vs 1 (rápido) + Equipo (más profundo).</li>
+  <li><strong>Información incompleta con margen:</strong> el acierto exacto es jackpot; el ±2 evita frustración extrema (importante en juegos para chicos).</li>
+  <li><strong>El puesto importa:</strong> como en modos Ultimate Team, la formación no es solo estética.</li>
+  <li><strong>Onboarding del modo:</strong> mientras no tengas 11 cartas, el 1 vs 1 sigue siendo la puerta de entrada.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2>7. Alcance sugerido por fases (para investigar / priorizar)</h2>
+<table>
+  <tr>
+    <th>Fase</th>
+    <th>Entrega</th>
+    <th>Notas</th>
+  </tr>
+  <tr>
+    <td>A</td>
+    <td>Mejora de escaneo (marco + sugerencias + confirmación)</td>
+    <td>Sube la calidad percibida de inmediato</td>
+  </tr>
+  <tr>
+    <td>B</td>
+    <td>Pantalla “Mi equipo”: armar y guardar el XI</td>
+    <td>Aún sin pelear; da valor a la colección</td>
+  </tr>
+  <tr>
+    <td>C</td>
+    <td>Modo Equipo vs bot (3 jugadas, apuestas, poder de zona)</td>
+    <td>Validar diversión y claridad de reglas</td>
+  </tr>
+  <tr>
+    <td>D</td>
+    <td>Equipo vs equipo de otros jugadores + recompensas</td>
+    <td>Matchmaking por poder de equipo / trofeos</td>
+  </tr>
+  <tr>
+    <td>E</td>
+    <td>Extras: retos diarios, torneos, amigos</td>
+    <td>Cuando el core esté estable</td>
+  </tr>
+</table>
+
+<!-- ============================================================ -->
+<h2>8. Preguntas abiertas para investigar</h2>
+<ul>
+  <li>¿El “poder de zona” es el promedio de la zona, la mejor carta, o una suma topeada?</li>
+  <li>¿Cuánta información parcial se muestra sin romper el misterio (rareza, una stat, rango)?</li>
+  <li>¿Valores de pozo y apuesta máxima por ronda (balance económico con gemas/energía)?</li>
+  <li>¿Edad objetivo exacta y cuánto de “farol/apuesta” es sano presentar a chicos (lenguaje: “jugada” vs “apuesta”)?</li>
+  <li>¿Se permite jugar con menos de 11 al principio (ej. 5 titulares) como entrenamiento?</li>
+  <li>¿Cómo se evita el abuso (siempre apostar lo mínimo, bots predecibles, etc.)?</li>
+  <li>Impacto legal/comunicación: evitar semántica de juego de azar con dinero real (solo moneda virtual del juego).</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2>9. Resumen ejecutivo</h2>
+<p>
+  <strong>Hoy:</strong> Battle XI permite registrarse, escanear figuritas, coleccionar cartas y
+  pelear 1 vs 1 por estadísticas, con economía de energía/gemas/trofeos, ranking real y
+  despliegue en producción.
+</p>
+<p>
+  <strong>Propuesta:</strong> sumar un modo Equipo donde el jugador arma un XI con criterio de fútbol
+  y compite en un minijuego de cartas de 3 jugadas: ataca zonas del rival, apuesta parte de su pozo
+  e intenta acertar el poder oculto. Exacto gana fuerte, cerca gana poco, fallo le da la apuesta al rival.
+  Así el juego gana profundidad sin tapar el modo rápido actual, y escanear más figuritas tiene un objetivo claro:
+  completar y potenciar el once.
+</p>
+
+<p class="footer">
+  Battle XI — Documento interno de producto · Borrador para investigación · No implica implementación inmediata.
+</p>
+
+</body>
+</html>

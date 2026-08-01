@@ -42,6 +42,29 @@ enum BattleResult {
   draw
 }
 
+/// De dónde salió la carta del chico.
+enum CardSource {
+  scan
+  pack
+  starter
+}
+
+enum SquadMode {
+  futbol5
+}
+
+enum TeamMatchStatus {
+  active
+  finished
+}
+
+/// Estilo táctico del equipo en un partido de Fútbol 5.
+enum TeamStyle {
+  ataque
+  equilibrio
+  defensa
+}
+
 model User {
   id String @id @default(cuid())
 
@@ -69,12 +92,47 @@ model User {
   scans             Scan[]
   battles           Battle[] @relation("BattleUser")
   battlesAsOpponent Battle[] @relation("BattleOpponentUser")
+  squads            Squad[]
+  teamMatches       TeamMatch[]
 
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   lastLoginAt DateTime?
 
   @@index([parentEmail])
+}
+
+/// Ficha del catálogo propio (nombres + avatar). Las stats Battle XI viven acá, no en la API.
+model PlayerTemplate {
+  id String @id @default(cuid())
+
+  slug        String   @unique
+  playerName  String
+  countryCode String
+  countryFlag String
+  position    Position
+  /// Posiciones compatibles, ej. ["EXT","MC"].
+  compatible  Json     @default("[]")
+  rarity      Rarity
+  rating      Int
+  ability     String   @default("none")
+  imageUrl    String   @default("/avatars/player-default.svg")
+
+  vel Int
+  tir Int
+  pas Int
+  reg Int
+  def Int
+  fis Int
+
+  published Boolean @default(true)
+  cards     Card[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([published, position])
+  @@index([countryCode])
 }
 
 model Scan {
@@ -104,6 +162,10 @@ model Card {
   scanId String? @unique
   scan   Scan?   @relation(fields: [scanId], references: [id], onDelete: SetNull)
 
+  source     CardSource @default(scan)
+  templateId String?
+  template   PlayerTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
   playerName  String
   position    Position
   rarity      Rarity
@@ -112,6 +174,7 @@ model Card {
   xp          Int     @default(0)
   countryFlag String  @default("🇦🇷")
   imageUrl    String?
+  ability     String  @default("none")
 
   vel Int
   tir Int
@@ -122,11 +185,81 @@ model Card {
 
   battles           Battle[] @relation("BattleUserCard")
   battlesAsOpponent Battle[] @relation("BattleOpponentCard")
+  squadSlots        SquadSlot[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([userId, createdAt])
+  @@index([userId, source])
+  @@index([templateId])
+}
+
+/// Plantel guardado. Por ahora solo Fútbol 5; el XI llega después.
+model Squad {
+  id     String    @id @default(cuid())
+  userId String
+  user   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mode   SquadMode @default(futbol5)
+  style  TeamStyle @default(equilibrio)
+  /// Slot del capitán: POR | DEF | MC1 | MC2 | DEL
+  captainSlot String?
+
+  slots SquadSlot[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, mode])
+}
+
+model SquadSlot {
+  id     String @id @default(cuid())
+  squadId String
+  squad  Squad  @relation(fields: [squadId], references: [id], onDelete: Cascade)
+  /// POR | DEF | MC1 | MC2 | DEL
+  slotKey String
+  cardId  String?
+  card    Card?  @relation(fields: [cardId], references: [id], onDelete: SetNull)
+
+  @@unique([squadId, slotKey])
+  @@index([cardId])
+}
+
+/// Partido de Fútbol 5 (modo equipo). Acumula puntos; torneos vienen después.
+model TeamMatch {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status TeamMatchStatus @default(active)
+  result BattleResult?
+
+  styleUser TeamStyle @default(equilibrio)
+  styleBot  TeamStyle @default(equilibrio)
+
+  impulseLeft   Int @default(100)
+  scoreUser     Int @default(0)
+  scoreOpponent Int @default(0)
+  /// Momento actual: 0..3 (recuperación, construcción, definición, decisivo).
+  momentIndex Int @default(0)
+
+  /// Snapshot del once propio y del bot + historial de momentos.
+  lineupUser Json
+  lineupBot  Json
+  moments    Json @default("[]")
+  seed       String
+
+  gemsEarned    Int @default(0)
+  xpEarned      Int @default(0)
+  trophiesDelta Int @default(0)
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  finishedAt DateTime?
+
+  @@index([userId, createdAt])
+  @@index([userId, status])
 }
 
 model Battle {

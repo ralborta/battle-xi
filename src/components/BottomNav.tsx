@@ -4,7 +4,7 @@ import { cn } from "@/lib/cn";
 import {
   UserSquare2,
   Swords,
-  Trophy,
+  Users,
   BarChart3,
   ShoppingBag,
 } from "lucide-react";
@@ -19,8 +19,8 @@ interface NavItem {
 
 const ITEMS: NavItem[] = [
   { label: "Colección", href: "/coleccion", icon: UserSquare2 },
+  { label: "Equipo", href: "/equipo", icon: Users },
   { label: "Batallas", href: "/batallas", icon: Swords },
-  { label: "Torneos", href: "/torneos", icon: Trophy },
   { label: "Ranking", href: "/ranking", icon: BarChart3 },
   { label: "Tienda", href: "/tienda", icon: ShoppingBag },
 ];
@@ -49,7 +49,10 @@ export function BottomNav() {
         >
           <div className="flex items-stretch justify-around max-w-md mx-auto">
             {ITEMS.map((item) => {
-              const active = pathname === item.href;
+              const active =
+                item.href === "/"
+                  ? pathname === "/"
+                  : pathname === item.href || pathname.startsWith(`${item.href}/`);
               const Icon = item.icon;
               return (
                 <Link

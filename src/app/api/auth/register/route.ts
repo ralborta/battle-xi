@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { hashPin, normalizeNickname, startSession } from "@/lib/auth";
+import { grantStarterCards } from "@/lib/catalog";
+import { autoFillFutbol5 } from "@/lib/squad-service";
 import { parseEmail, parseNickname, parsePin } from "@/lib/validation";
 
 export async function POST(request: Request) {
@@ -40,6 +42,10 @@ export async function POST(request: Request) {
       lastLoginAt: new Date(),
     },
   });
+
+  // Plantel de entrada del catálogo + alineación Fútbol 5 lista para jugar.
+  await grantStarterCards(user.id);
+  await autoFillFutbol5(user.id);
 
   await startSession(user.id);
 

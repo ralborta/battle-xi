@@ -111,14 +111,14 @@ export default async function JugarPage() {
         )}
 
         <div className="grid grid-cols-2 gap-3">
-          <Link href="/batallas">
-            <Button variant="violet" size="md" fullWidth icon={<Swords className="w-4 h-4" />}>
-              Batalla
+          <Link href="/equipo">
+            <Button variant="gold" size="md" fullWidth icon={<Trophy className="w-4 h-4" />}>
+              Fútbol 5
             </Button>
           </Link>
-          <Link href="/ranking">
-            <Button variant="gold" size="md" fullWidth icon={<Trophy className="w-4 h-4" />}>
-              Ranking
+          <Link href="/batallas">
+            <Button variant="violet" size="md" fullWidth icon={<Swords className="w-4 h-4" />}>
+              Duelo 1v1
             </Button>
           </Link>
         </div>
