@@ -39,6 +39,8 @@ export async function POST(request: Request) {
       nicknameKey,
       parentEmail: validEmail,
       pinHash: hashPin(validPin),
+      // Suficiente para un sobre de arranque además del plantel regalado.
+      gems: 150,
       lastLoginAt: new Date(),
     },
   });
