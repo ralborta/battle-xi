@@ -15,8 +15,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    const battle = await startBattle(user, cardId);
-    return NextResponse.json({ battle: toBattleView(battle) }, { status: 201 });
+    const { battle, created } = await startBattle(user, cardId);
+    return NextResponse.json({ battle: toBattleView(battle) }, { status: created ? 201 : 200 });
   } catch (error) {
     if (error instanceof GameError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

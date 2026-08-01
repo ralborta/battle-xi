@@ -128,13 +128,16 @@ async function pickOpponent(userId: string, card: Card): Promise<OpponentSnapsho
   };
 }
 
-export async function startBattle(user: User, cardId: string): Promise<BattleWithCard> {
+export async function startBattle(
+  user: User,
+  cardId: string,
+): Promise<{ battle: BattleWithCard; created: boolean }> {
   const existing = await prisma.battle.findFirst({
     where: { userId: user.id, status: "active" },
     include: { card: true },
   });
   // Un duelo abierto por vez: evita que se escape energía si se corta la conexión.
-  if (existing) return existing;
+  if (existing) return { battle: existing, created: false };
 
   const card = await prisma.card.findFirst({ where: { id: cardId, userId: user.id } });
   if (!card) throw new GameError("Esa carta no está en tu colección", 404);
@@ -162,7 +165,7 @@ export async function startBattle(user: User, cardId: string): Promise<BattleWit
     }),
   ]);
 
-  return battle;
+  return { battle, created: true };
 }
 
 export async function getBattle(userId: string, battleId: string): Promise<BattleWithCard> {
