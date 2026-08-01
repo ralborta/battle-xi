@@ -31,6 +31,9 @@ export class GameError extends Error {
 const BOT_NAMES = ["Kairo", "Tato", "Bruno", "Zeta", "Nico", "Rulo", "Milo", "Fausto", "Ciro", "Lito"];
 const BOT_FLAGS = ["🇦🇷", "🇧🇷", "🇺🇾", "🇨🇴", "🇪🇸", "🇫🇷"];
 
+/** Diferencia de rating máxima tolerable entre las dos cartas de un duelo. */
+const RATING_MARGIN = 12;
+
 type BattleWithCard = Battle & { card: Card };
 
 function pickRandom<T>(items: T[]): T {
@@ -62,21 +65,17 @@ interface OpponentSnapshot {
  * esté vacío no hay contra quién jugar, así que armamos un rival del sistema.
  */
 async function pickOpponent(userId: string, card: Card): Promise<OpponentSnapshot> {
-  // Primero buscamos un rival parejo; si no hay, aflojamos el margen. Un duelo
-  // contra una carta 20 puntos mejor no es una batalla, es una paliza: antes de
-  // eso preferimos un rival del sistema al nivel del chico.
-  let pool: Array<Card & { user: { nickname: string } }> = [];
-  for (const margin of [12, 25]) {
-    pool = await prisma.card.findMany({
-      where: {
-        userId: { not: userId },
-        rating: { gte: card.rating - margin, lte: card.rating + margin },
-      },
-      include: { user: { select: { nickname: true } } },
-      take: 40,
-    });
-    if (pool.length > 0) break;
-  }
+  // Solo emparejamos con cartas de rating parecido. Con pocos clubes es tentador
+  // aflojar el margen, pero un duelo contra una carta 18 puntos mejor termina 0 a 4:
+  // preferimos un rival del sistema al nivel del chico.
+  const pool = await prisma.card.findMany({
+    where: {
+      userId: { not: userId },
+      rating: { gte: card.rating - RATING_MARGIN, lte: card.rating + RATING_MARGIN },
+    },
+    include: { user: { select: { nickname: true } } },
+    take: 40,
+  });
 
   if (pool.length > 0) {
     const rival = pickRandom(pool);
