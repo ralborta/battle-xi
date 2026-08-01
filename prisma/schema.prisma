@@ -31,6 +31,17 @@ enum ScanStatus {
   discarded
 }
 
+enum BattleStatus {
+  active
+  finished
+}
+
+enum BattleResult {
+  win
+  loss
+  draw
+}
+
 model User {
   id String @id @default(cuid())
 
@@ -40,10 +51,24 @@ model User {
   nicknameKey String @unique
   parentEmail String
   pinHash     String
-  gems        Int    @default(0)
 
-  cards Card[]
-  scans Scan[]
+  gems     Int @default(50)
+  xp       Int @default(0)
+  trophies Int @default(0)
+  wins     Int @default(0)
+  losses   Int @default(0)
+  draws    Int @default(0)
+  streak   Int @default(0)
+
+  /// La energía no se descuenta con un cron: se recalcula al leerla a partir de
+  /// cuándo fue la última vez que la tocamos.
+  energy          Int      @default(20)
+  energyUpdatedAt DateTime @default(now())
+
+  cards             Card[]
+  scans             Scan[]
+  battles           Battle[] @relation("BattleUser")
+  battlesAsOpponent Battle[] @relation("BattleOpponentUser")
 
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -84,6 +109,7 @@ model Card {
   rarity      Rarity
   rating      Int
   level       Int     @default(1)
+  xp          Int     @default(0)
   countryFlag String  @default("🇦🇷")
   imageUrl    String?
 
@@ -94,8 +120,64 @@ model Card {
   def Int
   fis Int
 
+  battles           Battle[] @relation("BattleUserCard")
+  battlesAsOpponent Battle[] @relation("BattleOpponentCard")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([userId, createdAt])
+}
+
+model Battle {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("BattleUser", fields: [userId], references: [id], onDelete: Cascade)
+  cardId String
+  card   Card   @relation("BattleUserCard", fields: [cardId], references: [id], onDelete: Cascade)
+
+  opponentUserId String?
+  opponentUser   User?   @relation("BattleOpponentUser", fields: [opponentUserId], references: [id], onDelete: SetNull)
+  opponentCardId String?
+  opponentCard   Card?   @relation("BattleOpponentCard", fields: [opponentCardId], references: [id], onDelete: SetNull)
+
+  /// Copiamos la carta rival al empezar: si su dueño la mejora a mitad del duelo,
+  /// la batalla en curso no cambia.
+  opponentNickname String
+  opponentName     String
+  opponentPosition Position
+  opponentRarity   Rarity
+  opponentRating   Int
+  opponentLevel    Int
+  opponentFlag     String
+  opponentImageUrl String?
+  opponentVel      Int
+  opponentTir      Int
+  opponentPas      Int
+  opponentReg      Int
+  opponentDef      Int
+  opponentFis      Int
+  /// Cuando todavía no hay cartas de otros chicos, el rival lo arma el sistema.
+  isBot Boolean @default(false)
+
+  status        BattleStatus  @default(active)
+  result        BattleResult?
+  scoreUser     Int           @default(0)
+  scoreOpponent Int           @default(0)
+  /// [{ stat, userValue, opponentValue, winner }] en el orden en que se jugaron.
+  rounds Json @default("[]")
+  /// Semilla del empuje aleatorio de cada ronda: la guarda el server para que el
+  /// resultado no dependa del navegador.
+  seed String
+
+  gemsEarned    Int @default(0)
+  xpEarned      Int @default(0)
+  trophiesDelta Int @default(0)
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  finishedAt DateTime?
+
+  @@index([userId, createdAt])
+  @@index([userId, status])
 }

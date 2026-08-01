@@ -26,6 +26,8 @@ export interface PlayerCardProps {
   size?: "sm" | "md" | "lg";
   className?: string;
   rotate?: number;
+  /** En un duelo las stats del rival se descubren recién al jugarlas. */
+  hideStats?: boolean;
 }
 
 const SIZES = {
@@ -46,6 +48,7 @@ export function PlayerCard({
   size = "md",
   className,
   rotate = 0,
+  hideStats = false,
 }: PlayerCardProps) {
   const style = RARITY_STYLES[rarity];
   const sizes = SIZES[size];
@@ -205,7 +208,7 @@ export function PlayerCard({
                     textShadow: `0 0 6px ${style.glow}`,
                   }}
                 >
-                  {value}
+                  {hideStats ? "??" : value}
                 </span>
               </div>
             ))}

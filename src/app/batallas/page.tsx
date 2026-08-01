@@ -1,18 +1,22 @@
-import { GameGate } from "@/components/GameGate";
 import { BottomNav } from "@/components/BottomNav";
 import { PageShell } from "@/components/PageShell";
 import { Button } from "@/components/Button";
-import { Swords, Zap, Users, Clock } from "lucide-react";
+import { getCurrentUser } from "@/lib/auth";
+import { prisma } from "@/lib/db";
+import { ENERGY_PER_BATTLE, currentEnergy } from "@/lib/game";
+import { Clock, Swords, Users, Zap } from "lucide-react";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 const MODES = [
   {
     title: "Batalla Rápida",
-    desc: "Duelo 1 vs 1 contra un rival al azar",
-    reward: "+150 XP · 25 gemas",
+    desc: "Duelo 1 vs 1 contra la carta de otro club",
+    reward: `+150 XP · 25 gemas · cuesta ${ENERGY_PER_BATTLE} de energía`,
     icon: Zap,
     variant: "cyan" as const,
     accent: "from-cyan-400/20 to-cyan-600/10",
+    href: "/batallas/nueva",
   },
   {
     title: "Reto del Día",
@@ -21,6 +25,7 @@ const MODES = [
     icon: Clock,
     variant: "violet" as const,
     accent: "from-violet-500/20 to-violet-700/10",
+    href: null,
   },
   {
     title: "Equipo vs Equipo",
@@ -29,20 +34,31 @@ const MODES = [
     icon: Users,
     variant: "gold" as const,
     accent: "from-amber-400/20 to-amber-600/10",
+    href: null,
   },
 ];
 
-export default function BatallasPage() {
+export default async function BatallasPage() {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+
+  const active = await prisma.battle.findFirst({
+    where: { userId: user.id, status: "active" },
+    select: { id: true },
+  });
+  const { energy } = currentEnergy(user.energy, user.energyUpdatedAt);
+
+  const stats = [
+    { label: "Victorias", value: user.wins, color: "#22d3ee" },
+    { label: "Racha", value: user.streak, color: "#fbbf24" },
+    { label: "Trofeos", value: user.trophies, color: "#a855f7" },
+  ];
+
   return (
-    <GameGate>
     <>
-      <PageShell title="Batallas" subtitle="Elegí tu modo y conquistá la cancha">
+      <PageShell title="Batallas" subtitle={`Energía ${energy}/20`}>
         <div className="grid grid-cols-3 gap-2 mb-6">
-          {[
-            { label: "Victorias", value: "23", color: "#22d3ee" },
-            { label: "Racha", value: "5", color: "#fbbf24" },
-            { label: "Trofeos", value: "412", color: "#a855f7" },
-          ].map((s) => (
+          {stats.map((s) => (
             <div
               key={s.label}
               className="rounded-2xl border border-border-soft bg-white/5 backdrop-blur-md p-3 text-center"
@@ -60,10 +76,20 @@ export default function BatallasPage() {
           ))}
         </div>
 
+        {active && (
+          <Link href={`/batallas/${active.id}`} className="block mb-5">
+            <div className="rounded-2xl border border-cyan-400/50 bg-cyan-400/10 p-4 text-center">
+              <p className="font-display text-lg text-cyan-100">Tenés un duelo sin terminar</p>
+              <p className="mt-1 text-xs text-text-tertiary font-body">
+                Tocá acá para volver a la cancha
+              </p>
+            </div>
+          </Link>
+        )}
+
         <div className="space-y-4">
           {MODES.map((m) => {
             const Icon = m.icon;
-            const isQuick = m.title === "Batalla Rápida";
             return (
               <div
                 key={m.title}
@@ -99,8 +125,8 @@ export default function BatallasPage() {
                     </p>
                   </div>
                 </div>
-                {isQuick ? (
-                  <Link href="/batallas/emulada" className="block mt-4">
+                {m.href ? (
+                  <Link href={m.href} className="block mt-4">
                     <Button
                       variant={m.variant}
                       size="md"
@@ -111,14 +137,8 @@ export default function BatallasPage() {
                     </Button>
                   </Link>
                 ) : (
-                  <Button
-                    variant={m.variant}
-                    size="md"
-                    fullWidth
-                    className="mt-4"
-                    icon={<Swords className="w-4 h-4" />}
-                  >
-                    Competir
+                  <Button variant="ghost" size="md" fullWidth className="mt-4" disabled>
+                    Muy pronto
                   </Button>
                 )}
               </div>
@@ -128,6 +148,5 @@ export default function BatallasPage() {
       </PageShell>
       <BottomNav />
     </>
-    </GameGate>
   );
 }

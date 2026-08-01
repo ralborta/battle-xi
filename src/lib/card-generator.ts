@@ -63,11 +63,23 @@ function clamp(value: number, min = 32, max = 99): number {
   return Math.max(min, Math.min(max, Math.round(value)));
 }
 
+function rarityForRating(rating: number): Rarity {
+  const band = RARITY_ODDS.find((o) => rating >= o.min && rating <= o.max);
+  return band?.rarity ?? "common";
+}
+
 /**
  * Genera la carta a partir de una semilla estable: el mismo escaneo siempre
  * produce los mismos números, así un reintento no cambia lo que ya vio el chico.
+ *
+ * Con `targetRating` el rating viene impuesto (lo usa el rival del sistema para
+ * salir parejo con la carta del chico) y la rareza se deduce de ese número.
  */
-export function generateCard(seedInput: string, position: Position): GeneratedCard {
+export function generateCard(
+  seedInput: string,
+  position: Position,
+  targetRating?: number,
+): GeneratedCard {
   const random = mulberry32(seedFrom(seedInput));
 
   const totalWeight = RARITY_ODDS.reduce((sum, o) => sum + o.weight, 0);
@@ -81,14 +93,18 @@ export function generateCard(seedInput: string, position: Position): GeneratedCa
     }
   }
 
-  const rating = Math.round(odds.min + random() * (odds.max - odds.min));
+  const rating =
+    targetRating === undefined
+      ? Math.round(odds.min + random() * (odds.max - odds.min))
+      : clamp(targetRating, 55, 96);
+  const rarity = targetRating === undefined ? odds.rarity : rarityForRating(rating);
   const profile = POSITION_PROFILE[position];
 
   const stat = (key: StatKey): number =>
     clamp(rating + profile[key] + (random() * 8 - 4));
 
   return {
-    rarity: odds.rarity,
+    rarity,
     rating,
     vel: stat("vel"),
     tir: stat("tir"),
