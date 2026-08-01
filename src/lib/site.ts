@@ -4,7 +4,7 @@
  * cambiar NEXT_PUBLIC_APP_URL en el panel, sin tocar código.
  */
 export const siteUrl = (
-  process.env.NEXT_PUBLIC_APP_URL ?? "https://battlexi-web.wd75db.easypanel.host"
+  process.env.NEXT_PUBLIC_APP_URL ?? "https://battlexi.nivel41.com"
 ).replace(/\/$/, "");
 
 export const siteName = "Battle XI";
