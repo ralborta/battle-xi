@@ -1,0 +1,101 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+enum Position {
+  POR
+  DEF
+  MC
+  DC
+  DEL
+  EXT
+}
+
+enum Rarity {
+  common
+  pro
+  rare
+  elite
+  champion
+  legend
+}
+
+enum ScanStatus {
+  pending
+  confirmed
+  discarded
+}
+
+model User {
+  id String @id @default(cuid())
+
+  /// Apodo tal como lo escribió el chico, para mostrar en pantalla.
+  nickname String
+  /// Versión normalizada en minúsculas: es la que garantiza unicidad y sirve para el login.
+  nicknameKey String @unique
+  parentEmail String
+  pinHash     String
+  gems        Int    @default(0)
+
+  cards Card[]
+  scans Scan[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  lastLoginAt DateTime?
+
+  @@index([parentEmail])
+}
+
+model Scan {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  imageKey String
+  imageUrl String
+  /// Texto crudo que devolvió el OCR, para poder mejorar el reconocimiento más adelante.
+  ocrText      String?
+  detectedName String?
+  status       ScanStatus @default(pending)
+
+  card Card?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
+}
+
+model Card {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scanId String? @unique
+  scan   Scan?   @relation(fields: [scanId], references: [id], onDelete: SetNull)
+
+  playerName  String
+  position    Position
+  rarity      Rarity
+  rating      Int
+  level       Int     @default(1)
+  countryFlag String  @default("🇦🇷")
+  imageUrl    String?
+
+  vel Int
+  tir Int
+  pas Int
+  reg Int
+  def Int
+  fis Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
+}

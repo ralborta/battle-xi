@@ -11,14 +11,31 @@ export function GameGate({ children }: { children: ReactNode }) {
   const [allowed, setAllowed] = useState(false);
 
   useEffect(() => {
-    if (isOnboarded()) {
-      setAllowed(true);
+    let cancelled = false;
+
+    const check = async () => {
+      try {
+        const res = await fetch("/api/me", { cache: "no-store" });
+        if (cancelled) return;
+        if (res.ok) {
+          setAllowed(true);
+          setReady(true);
+          return;
+        }
+      } catch {
+        // Sin red no podemos validar la sesión: lo mandamos a entrar de nuevo.
+      }
+      if (cancelled) return;
+      setAllowed(false);
       setReady(true);
-      return;
-    }
-    setReady(true);
-    setAllowed(false);
-    router.replace("/onboarding");
+      // Si ya pasó por el onboarding en este teléfono, solo le falta volver a entrar.
+      router.replace(isOnboarded() ? "/login" : "/onboarding");
+    };
+
+    void check();
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   if (!ready) {

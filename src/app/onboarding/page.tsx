@@ -8,6 +8,7 @@ import {
   Camera,
   ChevronLeft,
   ChevronRight,
+  KeyRound,
   ScanLine,
   Shield,
   Sparkles,
@@ -25,6 +26,9 @@ export default function OnboardingPage() {
   const [step, setStep] = useState(1);
   const [nickname, setNickname] = useState("");
   const [parentEmail, setParentEmail] = useState("");
+  const [pin, setPin] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [signupError, setSignupError] = useState<string | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [streamActive, setStreamActive] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -88,16 +92,41 @@ export default function OnboardingPage() {
   const canGoProfile = streamActive;
   const canFinish =
     nickname.trim().length >= 2 &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(parentEmail.trim());
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(parentEmail.trim()) &&
+    /^\d{4}$/.test(pin);
 
-  const finish = () => {
-    persistOnboarding({
-      nickname: nickname.trim(),
-      parentEmail: parentEmail.trim().toLowerCase(),
-      cameraGranted: cameraEverGrantedRef.current,
-    });
-    stopCamera();
-    router.push("/jugar");
+  const finish = async () => {
+    setSignupError(null);
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nickname: nickname.trim(),
+          parentEmail: parentEmail.trim().toLowerCase(),
+          pin,
+        }),
+      });
+      const data = (await res.json().catch(() => null)) as { error?: string } | null;
+
+      if (!res.ok) {
+        setSignupError(data?.error ?? "No pudimos crear tu cuenta. Probá de nuevo.");
+        return;
+      }
+
+      persistOnboarding({
+        nickname: nickname.trim(),
+        parentEmail: parentEmail.trim().toLowerCase(),
+        cameraGranted: cameraEverGrantedRef.current,
+      });
+      stopCamera();
+      router.push("/jugar");
+    } catch {
+      setSignupError("No pudimos conectarnos. Revisá tu internet y reintentá.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -353,8 +382,8 @@ export default function OnboardingPage() {
               Tu cuenta
             </h1>
             <p className="mt-3 text-center text-sm text-text-tertiary font-body">
-              Elegí un apodo épico. El email es de un adulto para recuperar la
-              cuenta si hace falta.
+              Elegí un apodo épico y un PIN de 4 números para entrar. El email es
+              de un adulto para recuperar la cuenta si hace falta.
             </p>
 
             <div className="mt-8 space-y-4 rounded-2xl border border-border-soft bg-white/5 p-5">
@@ -386,7 +415,32 @@ export default function OnboardingPage() {
                   className="mt-1 w-full h-12 rounded-xl bg-bg-deep border border-border-soft px-4 text-text-primary font-body placeholder:text-text-muted focus:outline-none focus:border-cyan-400/60 focus:shadow-[0_0_14px_rgba(34,211,238,0.3)] transition"
                 />
               </label>
+              <label className="block">
+                <span className="text-[11px] font-display tracking-widest uppercase text-text-tertiary flex items-center gap-1">
+                  <KeyRound className="h-3.5 w-3.5 text-cyan-300" />
+                  Tu PIN secreto
+                </span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                  placeholder="4 números"
+                  maxLength={4}
+                  autoComplete="new-password"
+                  className="mt-1 w-full h-12 rounded-xl bg-bg-deep border border-border-soft px-4 text-text-primary font-body tracking-[0.5em] placeholder:tracking-normal placeholder:text-text-muted focus:outline-none focus:border-cyan-400/60 focus:shadow-[0_0_14px_rgba(34,211,238,0.3)] transition"
+                />
+                <span className="mt-1 block text-[11px] text-text-muted font-body">
+                  Con el apodo y este PIN entrás desde cualquier teléfono.
+                </span>
+              </label>
             </div>
+
+            {signupError && (
+              <p className="mt-4 text-center text-sm text-red-400 font-body px-2">
+                {signupError}
+              </p>
+            )}
 
             <div className="flex gap-3 mt-8">
               <Button
@@ -402,15 +456,15 @@ export default function OnboardingPage() {
                 variant="cyan"
                 size="lg"
                 className="flex-[2]"
-                disabled={!canFinish}
-                onClick={finish}
+                disabled={!canFinish || submitting}
+                onClick={() => void finish()}
               >
-                Entrar al juego
+                {submitting ? "Creando tu club…" : "Entrar al juego"}
               </Button>
             </div>
             {!canFinish && (
               <p className="mt-3 text-center text-[11px] text-text-muted font-body">
-                Apodo de al menos 2 letras y un email válido.
+                Apodo de al menos 2 letras, un email válido y un PIN de 4 números.
               </p>
             )}
           </div>
