@@ -62,23 +62,21 @@ interface OpponentSnapshot {
  * esté vacío no hay contra quién jugar, así que armamos un rival del sistema.
  */
 async function pickOpponent(userId: string, card: Card): Promise<OpponentSnapshot> {
-  const nearby = await prisma.card.findMany({
-    where: {
-      userId: { not: userId },
-      rating: { gte: card.rating - 12, lte: card.rating + 12 },
-    },
-    include: { user: { select: { nickname: true } } },
-    take: 40,
-  });
-
-  const pool =
-    nearby.length > 0
-      ? nearby
-      : await prisma.card.findMany({
-          where: { userId: { not: userId } },
-          include: { user: { select: { nickname: true } } },
-          take: 40,
-        });
+  // Primero buscamos un rival parejo; si no hay, aflojamos el margen. Un duelo
+  // contra una carta 20 puntos mejor no es una batalla, es una paliza: antes de
+  // eso preferimos un rival del sistema al nivel del chico.
+  let pool: Array<Card & { user: { nickname: string } }> = [];
+  for (const margin of [12, 25]) {
+    pool = await prisma.card.findMany({
+      where: {
+        userId: { not: userId },
+        rating: { gte: card.rating - margin, lte: card.rating + margin },
+      },
+      include: { user: { select: { nickname: true } } },
+      take: 40,
+    });
+    if (pool.length > 0) break;
+  }
 
   if (pool.length > 0) {
     const rival = pickRandom(pool);
