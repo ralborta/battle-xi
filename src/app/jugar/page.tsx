@@ -116,9 +116,9 @@ export default async function JugarPage() {
               Batalla
             </Button>
           </Link>
-          <Link href="/torneos">
+          <Link href="/ranking">
             <Button variant="gold" size="md" fullWidth icon={<Trophy className="w-4 h-4" />}>
-              Torneo
+              Ranking
             </Button>
           </Link>
         </div>

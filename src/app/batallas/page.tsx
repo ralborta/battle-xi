@@ -21,7 +21,7 @@ const MODES = [
   {
     title: "Reto del Día",
     desc: "Misión diaria con recompensa especial",
-    reward: "Pack rareza Rara garantizado",
+    reward: "En preparación",
     icon: Clock,
     variant: "violet" as const,
     accent: "from-violet-500/20 to-violet-700/10",
@@ -30,7 +30,7 @@ const MODES = [
   {
     title: "Equipo vs Equipo",
     desc: "Tu XI completo contra otro XI",
-    reward: "+400 XP · 80 gemas",
+    reward: "En preparación",
     icon: Users,
     variant: "gold" as const,
     accent: "from-amber-400/20 to-amber-600/10",

@@ -1,46 +1,19 @@
-import { GameGate } from "@/components/GameGate";
 import { BottomNav } from "@/components/BottomNav";
 import { PageShell } from "@/components/PageShell";
-import { Button } from "@/components/Button";
-import { Gem, Package, Sparkles, Zap } from "lucide-react";
+import { getCurrentUser } from "@/lib/auth";
+import { ENERGY_MAX, ENERGY_REFILL_COST, currentEnergy } from "@/lib/game";
+import { Gem, Package, ScanLine } from "lucide-react";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { RecargarEnergia } from "./RecargarEnergia";
 
-const PACKS = [
-  {
-    name: "Pack Pro",
-    desc: "5 cartas · 1 garantizada Pro+",
-    price: "150",
-    icon: Package,
-    rarity: "pro" as const,
-    color: "#22d3ee",
-  },
-  {
-    name: "Pack Élite",
-    desc: "5 cartas · 1 garantizada Élite+",
-    price: "450",
-    icon: Sparkles,
-    rarity: "elite" as const,
-    color: "#a855f7",
-    featured: true,
-  },
-  {
-    name: "Pack Campeón",
-    desc: "7 cartas · 2 garantizadas Élite+",
-    price: "900",
-    icon: Sparkles,
-    rarity: "champion" as const,
-    color: "#fbbf24",
-  },
-];
+export default async function TiendaPage() {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
 
-const POWERS = [
-  { name: "Boost de XP x2", desc: "1 hora", price: 50, icon: Zap },
-  { name: "Energía completa", desc: "Recarga +20", price: 80, icon: Zap },
-  { name: "Slot extra de carta", desc: "Permanente", price: 200, icon: Package },
-];
+  const { energy } = currentEnergy(user.energy, user.energyUpdatedAt);
 
-export default function TiendaPage() {
   return (
-    <GameGate>
     <>
       <PageShell title="Tienda" subtitle="Gastá gemas, no plata real">
         <div className="relative overflow-hidden rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/15 to-violet-500/10 p-4 mb-6">
@@ -54,7 +27,10 @@ export default function TiendaPage() {
                 className="mt-1 font-display text-4xl text-cyan-200 leading-none"
                 style={{ textShadow: "0 0 14px rgba(34,211,238,0.6)" }}
               >
-                340
+                {user.gems}
+              </p>
+              <p className="mt-2 text-[11px] text-text-tertiary font-body">
+                Ganás gemas cada vez que jugás un duelo.
               </p>
             </div>
             <Gem
@@ -65,93 +41,39 @@ export default function TiendaPage() {
         </div>
 
         <h2 className="font-display text-lg tracking-wide text-text-secondary mb-3">
-          Sobres
-        </h2>
-        <div className="space-y-3 mb-7">
-          {PACKS.map((p) => {
-            const Icon = p.icon;
-            return (
-              <div
-                key={p.name}
-                className="relative overflow-hidden rounded-2xl p-4 border"
-                style={{
-                  background: `linear-gradient(135deg, ${p.color}15 0%, ${p.color}05 100%)`,
-                  borderColor: `${p.color}50`,
-                  boxShadow: p.featured ? `0 0 24px ${p.color}33` : undefined,
-                }}
-              >
-                {p.featured && (
-                  <div
-                    className="absolute top-2 right-2 px-2 py-0.5 rounded-md text-[10px] font-display tracking-widest uppercase"
-                    style={{
-                      background: `${p.color}`,
-                      color: "#03040c",
-                      boxShadow: `0 0 10px ${p.color}`,
-                    }}
-                  >
-                    Mejor valor
-                  </div>
-                )}
-                <div className="flex items-center gap-3">
-                  <div
-                    className="flex items-center justify-center w-14 h-14 rounded-xl"
-                    style={{
-                      background: `linear-gradient(135deg, ${p.color}, ${p.color}99)`,
-                      boxShadow: `0 0 16px ${p.color}80`,
-                    }}
-                  >
-                    <Icon className="w-7 h-7 text-bg-void" strokeWidth={2.4} />
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-display text-lg text-text-primary leading-tight">
-                      {p.name}
-                    </div>
-                    <div className="text-xs text-text-tertiary mt-0.5">{p.desc}</div>
-                  </div>
-                </div>
-                <Button
-                  variant={p.rarity === "pro" ? "cyan" : p.rarity === "elite" ? "violet" : "gold"}
-                  size="md"
-                  fullWidth
-                  className="mt-3"
-                  icon={<Gem className="w-4 h-4" />}
-                >
-                  {p.price} gemas
-                </Button>
-              </div>
-            );
-          })}
-        </div>
-
-        <h2 className="font-display text-lg tracking-wide text-text-secondary mb-3">
           Mejoras
         </h2>
-        <div className="space-y-2">
-          {POWERS.map((p) => {
-            const Icon = p.icon;
-            return (
-              <div
-                key={p.name}
-                className="flex items-center gap-3 rounded-xl p-3 bg-white/5 border border-border-soft"
-              >
-                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-violet-500/20 border border-violet-500/40">
-                  <Icon className="w-5 h-5 text-violet-300" />
-                </div>
-                <div className="flex-1">
-                  <div className="font-display text-sm text-text-primary">{p.name}</div>
-                  <div className="text-[11px] text-text-tertiary">{p.desc}</div>
-                </div>
-                <button className="px-3 h-9 rounded-lg bg-cyan-400/15 border border-cyan-400/40 text-cyan-200 text-xs font-display tracking-wider uppercase flex items-center gap-1 hover:bg-cyan-400/25 transition active:scale-95">
-                  <Gem className="w-3 h-3" />
-                  {p.price}
-                </button>
-              </div>
-            );
-          })}
+        <RecargarEnergia
+          gems={user.gems}
+          energy={energy}
+          max={ENERGY_MAX}
+          cost={ENERGY_REFILL_COST}
+        />
+
+        <h2 className="font-display text-lg tracking-wide text-text-secondary mt-7 mb-3">
+          Sobres
+        </h2>
+        <div className="rounded-2xl border border-border-soft bg-white/5 p-5 text-center">
+          <div className="mx-auto flex items-center justify-center w-12 h-12 rounded-xl bg-violet-500/15 border border-violet-500/30">
+            <Package className="w-6 h-6 text-violet-300" />
+          </div>
+          <p className="mt-3 font-display text-lg text-text-primary">
+            Los sobres llegan más adelante
+          </p>
+          <p className="mt-1 text-sm text-text-tertiary font-body">
+            Por ahora las cartas se consiguen de una sola manera: escaneando figuritas de
+            verdad.
+          </p>
+          <Link
+            href="/escanear"
+            className="mt-4 inline-flex items-center gap-2 h-11 px-5 rounded-xl bg-cyan-400/15 border border-cyan-400/40 text-cyan-200 text-sm font-display tracking-wider uppercase hover:bg-cyan-400/25 transition active:scale-95"
+          >
+            <ScanLine className="w-4 h-4" />
+            Escanear una figurita
+          </Link>
         </div>
       </PageShell>
       <BottomNav />
     </>
-    </GameGate>
   );
 }

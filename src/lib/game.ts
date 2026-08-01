@@ -23,6 +23,8 @@ export const ROUNDS_PER_BATTLE = 4;
 export const ENERGY_MAX = 20;
 export const ENERGY_PER_BATTLE = 2;
 export const ENERGY_REGEN_MS = 6 * 60 * 1000;
+/** Llenar el tanque cuesta más que las gemas de tres victorias: apura, no reemplaza jugar. */
+export const ENERGY_REFILL_COST = 80;
 
 /** Tope al empuje del nivel para que una carta vieja no vuelva imposible el duelo. */
 const MAX_LEVEL_BONUS = 10;

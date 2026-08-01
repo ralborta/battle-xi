@@ -1,20 +1,12 @@
-import { GameGate } from "@/components/GameGate";
 import { BottomNav } from "@/components/BottomNav";
 import { PageShell } from "@/components/PageShell";
+import { getCurrentUser } from "@/lib/auth";
+import { prisma } from "@/lib/db";
+import { userLevel } from "@/lib/game";
 import { Crown, TrendingUp } from "lucide-react";
+import { redirect } from "next/navigation";
 
-const RANKING = [
-  { pos: 1, name: "Tincho", trophies: 2840, level: 32 },
-  { pos: 2, name: "MartaXI", trophies: 2710, level: 30 },
-  { pos: 3, name: "ElPibe10", trophies: 2655, level: 29 },
-  { pos: 4, name: "Sofi_22", trophies: 2410, level: 27 },
-  { pos: 5, name: "BraianGoal", trophies: 2380, level: 26 },
-  { pos: 6, name: "JuliCapi", trophies: 2210, level: 24 },
-  { pos: 7, name: "Mati_DF", trophies: 2050, level: 23 },
-  { pos: 8, name: "Tú", trophies: 1980, level: 22, you: true },
-  { pos: 9, name: "Naza_07", trophies: 1850, level: 21 },
-  { pos: 10, name: "RomiTuya", trophies: 1720, level: 20 },
-];
+const TOP_SIZE = 20;
 
 const MEDAL: Record<number, string> = {
   1: "#fbbf24",
@@ -22,109 +14,167 @@ const MEDAL: Record<number, string> = {
   3: "#f59e0b",
 };
 
-export default function RankingPage() {
+export default async function RankingPage() {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+
+  const [top, betterThanMe] = await Promise.all([
+    prisma.user.findMany({
+      orderBy: [{ trophies: "desc" }, { wins: "desc" }, { createdAt: "asc" }],
+      take: TOP_SIZE,
+      select: { id: true, nickname: true, trophies: true, xp: true },
+    }),
+    prisma.user.count({ where: { trophies: { gt: user.trophies } } }),
+  ]);
+
+  const players = top.map((p, i) => ({
+    pos: i + 1,
+    name: p.nickname,
+    trophies: p.trophies,
+    level: userLevel(p.xp),
+    you: p.id === user.id,
+  }));
+
+  const myPos = betterThanMe + 1;
+  const inTop = players.some((p) => p.you);
+  const podium = players.length >= 3 ? [players[1], players[0], players[2]] : [];
+  const rest = podium.length ? players.slice(3) : players;
+
   return (
-    <GameGate>
     <>
-      <PageShell title="Ranking" subtitle="Global · Semana actual">
-        <div className="flex gap-2 mb-5">
-          {["Global", "Amigos", "Liga"].map((t, i) => (
-            <button
-              key={t}
-              className={
-                "flex-1 h-10 rounded-xl text-sm font-display tracking-wider uppercase transition " +
-                (i === 0
-                  ? "bg-gradient-to-r from-cyan-400/30 to-violet-500/30 text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.3)] border border-cyan-400/40"
-                  : "bg-white/5 text-text-tertiary border border-border-soft hover:bg-white/10")
-              }
-            >
-              {t}
-            </button>
-          ))}
-        </div>
+      <PageShell
+        title="Ranking"
+        subtitle={inTop ? "Los mejores del juego" : `Estás en el puesto ${myPos}`}
+      >
+        {players.length <= 1 ? (
+          <div className="rounded-2xl border border-border-soft bg-white/5 p-6 text-center">
+            <p className="font-display text-lg text-text-primary">
+              Todavía sos el único acá
+            </p>
+            <p className="mt-2 text-sm text-text-tertiary font-body">
+              Invitá a tus amigos a escanear sus figuritas y peleen por el primer puesto.
+            </p>
+          </div>
+        ) : (
+          <>
+            {podium.length > 0 && (
+              <div className="grid grid-cols-3 gap-2 mb-6 items-end">
+                {podium.map((p, idx) => {
+                  const heights = ["h-24", "h-32", "h-20"];
+                  const color = MEDAL[p.pos];
+                  return (
+                    <div key={p.name} className="flex flex-col items-center">
+                      <Crown
+                        className="w-5 h-5 mb-1"
+                        style={{ color, filter: `drop-shadow(0 0 6px ${color}AA)` }}
+                      />
+                      <div className="text-xs font-display text-text-secondary truncate w-full text-center">
+                        {p.name}
+                      </div>
+                      <div className="text-[10px] mt-0.5 font-mono" style={{ color }}>
+                        {p.trophies}
+                      </div>
+                      <div
+                        className={`mt-1 w-full ${heights[idx]} rounded-t-xl border-t border-x relative overflow-hidden`}
+                        style={{
+                          background: `linear-gradient(180deg, ${color}40 0%, ${color}10 100%)`,
+                          borderColor: `${color}66`,
+                          boxShadow: `0 0 16px ${color}33`,
+                        }}
+                      >
+                        <div
+                          className="absolute inset-x-0 top-2 text-center font-display text-2xl"
+                          style={{ color, textShadow: `0 0 8px ${color}` }}
+                        >
+                          {p.pos}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
-        <div className="grid grid-cols-3 gap-2 mb-6 items-end">
-          {[RANKING[1], RANKING[0], RANKING[2]].map((p, idx) => {
-            const realPos = p.pos;
-            const heights = ["h-24", "h-32", "h-20"];
-            return (
-              <div key={p.name} className="flex flex-col items-center">
-                <Crown
-                  className="w-5 h-5 mb-1"
-                  style={{ color: MEDAL[realPos], filter: `drop-shadow(0 0 6px ${MEDAL[realPos]}AA)` }}
-                />
-                <div className="text-xs font-display text-text-secondary truncate w-full text-center">
-                  {p.name}
-                </div>
-                <div
-                  className="text-[10px] mt-0.5 font-mono"
-                  style={{ color: MEDAL[realPos] }}
-                >
-                  {p.trophies}
-                </div>
-                <div
-                  className={`mt-1 w-full ${heights[idx]} rounded-t-xl border-t border-x relative overflow-hidden`}
-                  style={{
-                    background: `linear-gradient(180deg, ${MEDAL[realPos]}40 0%, ${MEDAL[realPos]}10 100%)`,
-                    borderColor: `${MEDAL[realPos]}66`,
-                    boxShadow: `0 0 16px ${MEDAL[realPos]}33`,
-                  }}
-                >
-                  <div
-                    className="absolute inset-x-0 top-2 text-center font-display text-2xl"
-                    style={{ color: MEDAL[realPos], textShadow: `0 0 8px ${MEDAL[realPos]}` }}
-                  >
-                    {realPos}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="space-y-2">
-          {RANKING.slice(3).map((p) => (
-            <div
-              key={p.name}
-              className={
-                "flex items-center gap-3 rounded-xl p-3 border " +
-                (p.you
-                  ? "bg-gradient-to-r from-cyan-400/15 to-violet-500/15 border-cyan-400/50 shadow-[0_0_18px_rgba(34,211,238,0.25)]"
-                  : "bg-white/5 border-border-soft")
-              }
-            >
-              <div
-                className={
-                  "w-9 h-9 rounded-lg flex items-center justify-center font-display text-base " +
-                  (p.you ? "bg-cyan-400/30 text-cyan-100" : "bg-white/5 text-text-tertiary")
-                }
-              >
-                {p.pos}
-              </div>
-              <div className="flex-1">
-                <div className={"font-display text-base " + (p.you ? "text-cyan-100" : "text-text-primary")}>
-                  {p.name}
-                  {p.you && (
-                    <span className="ml-2 text-[10px] uppercase tracking-widest text-cyan-300/80">
-                      vos
-                    </span>
-                  )}
-                </div>
-                <div className="text-[11px] text-text-tertiary">Nivel {p.level}</div>
-              </div>
-              <div className="text-right">
-                <div className="font-mono text-sm text-amber-300 flex items-center gap-1 justify-end">
-                  <TrendingUp className="w-3 h-3" />
-                  {p.trophies}
-                </div>
-                <div className="text-[10px] text-text-tertiary uppercase tracking-wider">trofeos</div>
-              </div>
+            <div className="space-y-2">
+              {rest.map((p) => (
+                <RankRow key={p.name} {...p} />
+              ))}
             </div>
-          ))}
-        </div>
+
+            {!inTop && (
+              <>
+                <p className="mt-5 mb-2 text-center text-[11px] font-display tracking-widest uppercase text-text-muted">
+                  Tu puesto
+                </p>
+                <RankRow
+                  pos={myPos}
+                  name={user.nickname}
+                  trophies={user.trophies}
+                  level={userLevel(user.xp)}
+                  you
+                />
+              </>
+            )}
+          </>
+        )}
       </PageShell>
       <BottomNav />
     </>
-    </GameGate>
+  );
+}
+
+function RankRow({
+  pos,
+  name,
+  trophies,
+  level,
+  you,
+}: {
+  pos: number;
+  name: string;
+  trophies: number;
+  level: number;
+  you?: boolean;
+}) {
+  return (
+    <div
+      className={
+        "flex items-center gap-3 rounded-xl p-3 border " +
+        (you
+          ? "bg-gradient-to-r from-cyan-400/15 to-violet-500/15 border-cyan-400/50 shadow-[0_0_18px_rgba(34,211,238,0.25)]"
+          : "bg-white/5 border-border-soft")
+      }
+    >
+      <div
+        className={
+          "w-9 h-9 rounded-lg flex items-center justify-center font-display text-base " +
+          (you ? "bg-cyan-400/30 text-cyan-100" : "bg-white/5 text-text-tertiary")
+        }
+      >
+        {pos}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div
+          className={
+            "font-display text-base truncate " + (you ? "text-cyan-100" : "text-text-primary")
+          }
+        >
+          {name}
+          {you && (
+            <span className="ml-2 text-[10px] uppercase tracking-widest text-cyan-300/80">
+              vos
+            </span>
+          )}
+        </div>
+        <div className="text-[11px] text-text-tertiary">Nivel {level}</div>
+      </div>
+      <div className="text-right">
+        <div className="font-mono text-sm text-amber-300 flex items-center gap-1 justify-end">
+          <TrendingUp className="w-3 h-3" />
+          {trophies}
+        </div>
+        <div className="text-[10px] text-text-tertiary uppercase tracking-wider">trofeos</div>
+      </div>
+    </div>
   );
 }
