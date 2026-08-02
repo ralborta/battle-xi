@@ -126,9 +126,66 @@ export const PLAY_COST: Record<PlayType, number> = {
 };
 
 export const PLAY_LABELS: Record<PlayType, string> = {
-  seguro: "Ataque seguro",
-  combinado: "Ataque combinado",
-  total: "Ataque total",
+  seguro: "Jugada segura",
+  combinado: "Jugada media",
+  total: "Jugada arriesgada",
+};
+
+/** Texto de riesgo/beneficio para la UI del partido. */
+export const PLAY_INFO: Record<
+  PlayType,
+  {
+    cost: number;
+    label: string;
+    risk: string;
+    ifWin: string;
+    ifLose: string;
+    winMult: number;
+    loseMult: number;
+  }
+> = {
+  seguro: {
+    cost: 15,
+    label: "Jugada segura",
+    risk: "Bajo",
+    ifWin: "Sumás pocos puntos",
+    ifLose: "El rival tampoco suma mucho",
+    winMult: 1,
+    loseMult: 0.5,
+  },
+  combinado: {
+    cost: 25,
+    label: "Jugada media",
+    risk: "Medio",
+    ifWin: "Sumás puntos normales",
+    ifLose: "El rival suma bastante",
+    winMult: 1.4,
+    loseMult: 1,
+  },
+  total: {
+    cost: 40,
+    label: "Jugada arriesgada",
+    risk: "Alto",
+    ifWin: "Sumás muchos puntos",
+    ifLose: "El rival suma mucho si te gana",
+    winMult: 2,
+    loseMult: 1.5,
+  },
+};
+
+export const ZONE_LABELS: Record<ZoneId | "arquero" | "equilibrio", string> = {
+  ataque: "Ataque",
+  mediocampo: "Mediocampo",
+  defensa: "Defensa",
+  arquero: "Arquero",
+  equilibrio: "Equilibrio",
+};
+
+export const MOMENT_HELP: Record<number, string> = {
+  0: "Choque defensivo: pelean arquero y defensa. Si ganás, recuperás el balón.",
+  1: "Construcción: pelean los mediocampistas. Controlás el ritmo.",
+  2: "Definición: pelea el delantero. Acá se definen goles.",
+  3: "Decisivo: pelean los 5 puestos. Todo cuenta.",
 };
 
 /** Recompensas del partido de equipo (más que el 1v1 básico). */

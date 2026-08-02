@@ -22,7 +22,7 @@ export default async function PartidoPage({
 
   return (
     <>
-      <PageShell title="Partido" subtitle="Fútbol 5 · Sumá puntos">
+      <PageShell title="Partido" subtitle="Fútbol 5 · Mirás al rival y después arriesgás">
         <PartidoClient initial={toTeamMatchView(match)} />
       </PageShell>
       <BottomNav />

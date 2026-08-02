@@ -1,11 +1,16 @@
 "use client";
 
 import { Button } from "@/components/Button";
-import { PLAY_COST, PLAY_LABELS, SLOT_LABELS, type F5Slot, type PlayType } from "@/lib/futbol5";
+import {
+  SLOT_LABELS,
+  type F5Slot,
+  type PlayType,
+  ZONE_LABELS,
+} from "@/lib/futbol5";
 import { cn } from "@/lib/cn";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 type PublicPlayer = {
   slot: F5Slot;
@@ -27,6 +32,26 @@ type SlotDuel = {
   userPoints: number;
   botPoints: number;
   winner: string;
+  why?: string;
+};
+
+type TeamValues = {
+  ataque: number;
+  mediocampo: number;
+  defensa: number;
+  arquero: number;
+  equilibrio: number;
+};
+
+type PlayOption = {
+  playType: PlayType;
+  cost: number;
+  label: string;
+  risk: string;
+  ifWin: string;
+  ifLose: string;
+  canAfford: boolean;
+  approxWinPoints: number;
 };
 
 type MatchView = {
@@ -39,20 +64,35 @@ type MatchView = {
   momentIndex: number;
   momentsTotal: number;
   momentLabel: string;
+  momentHelp: string;
   activeZone: string;
   activeSlots: F5Slot[];
   styleUser: string;
   styleBot: string;
   connection: number;
+  youValues: TeamValues;
+  rivalValues: TeamValues;
+  yourZonePower: number;
+  rivalPlay: {
+    playType: PlayType;
+    label: string;
+    cost: number;
+    risk: string;
+    ifWin: string;
+    zonePower: number;
+  } | null;
+  playOptions: PlayOption[];
   moments: Array<{
     label: string;
     playType: string;
+    botPlayType?: string;
     userPower: number;
     botPower: number;
     userPoints: number;
     botPoints: number;
     winner: string;
     hint: string;
+    why?: string;
     duels?: SlotDuel[];
   }>;
   you: PublicPlayer[];
@@ -60,11 +100,21 @@ type MatchView = {
   rewards: { gems: number; xp: number; trophies: number } | null;
 };
 
+type StyleOpt = "ataque" | "equilibrio" | "defensa";
+
 export function PartidoClient({ initial }: { initial: MatchView }) {
   const router = useRouter();
   const [match, setMatch] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [style, setStyle] = useState<StyleOpt>(
+    (initial.styleUser as StyleOpt) || "equilibrio",
+  );
+  const [swapA, setSwapA] = useState<F5Slot | null>(null);
+  const [pendingSwap, setPendingSwap] = useState<[F5Slot, F5Slot] | null>(null);
+  const [step, setStep] = useState<"rival" | "you">("rival");
+
+  const lastMoment = match.moments[match.moments.length - 1];
 
   const play = async (playType: PlayType) => {
     setBusy(true);
@@ -73,7 +123,11 @@ export function PartidoClient({ initial }: { initial: MatchView }) {
       const res = await fetch(`/api/team-matches/${match.id}/moment`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playType }),
+        body: JSON.stringify({
+          playType,
+          style,
+          swap: pendingSwap ?? undefined,
+        }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
@@ -81,11 +135,33 @@ export function PartidoClient({ initial }: { initial: MatchView }) {
         return;
       }
       setMatch(data.match);
+      setPendingSwap(null);
+      setSwapA(null);
+      setStep("rival");
+      setStyle((data.match.styleUser as StyleOpt) || style);
       router.refresh();
     } finally {
       setBusy(false);
     }
   };
+
+  const onTapSlot = (slot: F5Slot) => {
+    if (!swapA) {
+      setSwapA(slot);
+      return;
+    }
+    if (swapA === slot) {
+      setSwapA(null);
+      return;
+    }
+    setPendingSwap([swapA, slot]);
+    setSwapA(null);
+  };
+
+  const youBySlot = useMemo(
+    () => new Map(match.you.map((p) => [p.slot, p])),
+    [match.you],
+  );
 
   if (match.status === "finished") {
     const title =
@@ -94,13 +170,15 @@ export function PartidoClient({ initial }: { initial: MatchView }) {
         : match.result === "loss"
           ? "Esta vez no fue"
           : "Empate";
-    const allDuels = match.moments.flatMap((m) => m.duels ?? []);
     return (
       <div className="space-y-5 text-center">
         <div className="rounded-3xl border border-amber-400/30 bg-gradient-to-br from-amber-500/15 to-transparent p-6">
           <p className="font-display text-3xl text-text-primary">{title}</p>
           <p className="mt-2 font-display text-4xl text-cyan-200">
             {match.scoreUser} — {match.scoreOpponent}
+          </p>
+          <p className="mt-2 text-sm text-text-tertiary">
+            Se gana sumando más puntos en los duelos de puesto a lo largo del partido.
           </p>
           {match.rewards && (
             <p className="mt-3 text-sm text-text-tertiary font-body">
@@ -111,34 +189,25 @@ export function PartidoClient({ initial }: { initial: MatchView }) {
           )}
         </div>
 
-        {allDuels.length > 0 && (
-          <div className="text-left space-y-2">
-            <h2 className="font-display text-sm text-text-secondary">Duelos por puesto</h2>
-            {allDuels.map((d, i) => (
-              <div
-                key={`${d.slot}-${i}`}
-                className={cn(
-                  "rounded-xl border px-3 py-2 text-sm flex justify-between gap-2",
-                  d.winner === "user"
-                    ? "border-cyan-400/40 bg-cyan-400/10"
-                    : d.winner === "bot"
-                      ? "border-violet-400/40 bg-violet-400/10"
-                      : "border-border-soft bg-white/5",
-                )}
-              >
-                <span>
-                  <span className="text-text-tertiary text-[11px]">
-                    {SLOT_LABELS[d.slot]} ·{" "}
-                  </span>
-                  {d.userName} vs {d.botName}
-                </span>
-                <span className="text-[11px] text-text-tertiary shrink-0">
-                  +{d.userPoints}/+{d.botPoints}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
+        <div className="text-left space-y-2">
+          <h2 className="font-display text-sm text-text-secondary">Cómo se jugó</h2>
+          {match.moments.map((m, i) => (
+            <div
+              key={i}
+              className={cn(
+                "rounded-xl border px-3 py-2 text-sm",
+                m.winner === "user"
+                  ? "border-cyan-400/40 bg-cyan-400/10"
+                  : m.winner === "bot"
+                    ? "border-violet-400/40 bg-violet-400/10"
+                    : "border-border-soft bg-white/5",
+              )}
+            >
+              <div className="font-display">{m.label}</div>
+              <p className="text-[11px] text-text-tertiary mt-1">{m.why ?? m.hint}</p>
+            </div>
+          ))}
+        </div>
 
         <div className="grid grid-cols-2 gap-3">
           <Link href="/equipo">
@@ -159,15 +228,19 @@ export function PartidoClient({ initial }: { initial: MatchView }) {
   const activeSet = new Set(match.activeSlots);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
+      {/* Marcador */}
       <div className="grid grid-cols-3 gap-2 text-center">
         <div className="rounded-2xl border border-border-soft bg-white/5 p-3">
           <div className="text-[10px] uppercase tracking-wider text-text-tertiary">Vos</div>
           <div className="font-display text-2xl text-cyan-200">{match.scoreUser}</div>
         </div>
         <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-3">
-          <div className="text-[10px] uppercase tracking-wider text-text-tertiary">Impulso</div>
+          <div className="text-[10px] uppercase tracking-wider text-text-tertiary">
+            Impulso
+          </div>
           <div className="font-display text-2xl text-amber-300">{match.impulseLeft}</div>
+          <div className="text-[9px] text-text-muted">energía del partido</div>
         </div>
         <div className="rounded-2xl border border-border-soft bg-white/5 p-3">
           <div className="text-[10px] uppercase tracking-wider text-text-tertiary">Rival</div>
@@ -175,104 +248,259 @@ export function PartidoClient({ initial }: { initial: MatchView }) {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-cyan-400/30 bg-cyan-400/10 p-4 text-center">
-        <p className="text-[11px] font-display tracking-widest uppercase text-cyan-200/80">
-          Momento {match.momentIndex + 1}/{match.momentsTotal} · {match.activeZone}
+      {/* Valores del equipo */}
+      <ValuesPanel title="Tus valores" values={match.youValues} accent="cyan" />
+      <ValuesPanel title="Valores rival" values={match.rivalValues} accent="violet" />
+
+      {/* Momento */}
+      <div className="rounded-2xl border border-cyan-400/30 bg-cyan-400/10 p-4">
+        <p className="text-[11px] font-display tracking-widest uppercase text-cyan-200/80 text-center">
+          Turno {match.momentIndex + 1}/{match.momentsTotal} ·{" "}
+          {ZONE_LABELS[match.activeZone as keyof typeof ZONE_LABELS] ?? match.activeZone}
         </p>
-        <p className="mt-1 font-display text-2xl text-text-primary">{match.momentLabel}</p>
-        <p className="mt-1 text-xs text-text-tertiary">
-          Estilo {match.styleUser} · Conexión +{match.connection}%
+        <p className="mt-1 font-display text-2xl text-text-primary text-center">
+          {match.momentLabel}
         </p>
-        <p className="mt-2 text-[11px] text-text-muted">
-          Pelean: {match.activeSlots.map((s) => SLOT_LABELS[s]).join(" · ")}
+        <p className="mt-2 text-xs text-text-tertiary text-center">{match.momentHelp}</p>
+        <p className="mt-2 text-[11px] text-text-muted text-center">
+          Pelean: {match.activeSlots.map((s) => SLOT_LABELS[s]).join(" · ")} · Poder zona{" "}
+          {match.yourZonePower} vs {match.rivalPlay?.zonePower ?? "—"}
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <LineupColumn
-          title="Tu equipo"
-          players={match.you}
-          accent="cyan"
-          activeSlots={activeSet}
-        />
-        <LineupColumn
-          title="Rival"
-          players={match.rival}
-          accent="violet"
-          activeSlots={activeSet}
-        />
-      </div>
-
-      {match.moments.length > 0 && (
-        <div className="space-y-2">
-          <h2 className="font-display text-sm text-text-secondary">Últimas jugadas</h2>
-          {match.moments.map((m, i) => (
-            <div
-              key={i}
-              className={cn(
-                "rounded-xl border px-3 py-2 text-sm",
-                m.winner === "user"
-                  ? "border-cyan-400/40 bg-cyan-400/10"
-                  : m.winner === "bot"
-                    ? "border-violet-400/40 bg-violet-400/10"
-                    : "border-border-soft bg-white/5",
-              )}
-            >
-              <div className="font-display">{m.label}</div>
-              <div className="text-[11px] text-text-tertiary">{m.hint}</div>
-              {m.duels && m.duels.length > 0 && (
-                <ul className="mt-1 space-y-0.5 text-[11px] text-text-secondary">
-                  {m.duels.map((d) => (
-                    <li key={d.slot}>
-                      {SLOT_LABELS[d.slot]}: {d.userName} {d.userPower} vs {d.botName}{" "}
-                      {d.botPower}
-                      {d.winner === "user"
-                        ? ` · +${d.userPoints}`
-                        : d.winner === "bot"
-                          ? ` · rival +${d.botPoints}`
-                          : " · empate"}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+      {lastMoment?.why && (
+        <div
+          className={cn(
+            "rounded-xl border px-3 py-2 text-xs",
+            lastMoment.winner === "user"
+              ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-100"
+              : lastMoment.winner === "bot"
+                ? "border-violet-400/40 bg-violet-400/10 text-violet-100"
+                : "border-border-soft bg-white/5 text-text-secondary",
+          )}
+        >
+          <p className="font-display text-sm mb-1">Último turno</p>
+          <p>{lastMoment.why}</p>
+          {lastMoment.duels?.map((d) => (
+            <p key={d.slot} className="mt-1 text-text-tertiary">
+              {d.why ?? `${SLOT_LABELS[d.slot]}: ${d.userPower} vs ${d.botPower}`}
+            </p>
           ))}
         </div>
       )}
 
-      {error && <p className="text-sm text-red-400 text-center">{error}</p>}
-
-      <div className="space-y-2">
-        <p className="text-center text-[11px] text-text-muted">
-          Cada ficha suma puntos si gana su puesto. Mejor puesto y más OVR = más puntos.
-        </p>
-        {(Object.keys(PLAY_COST) as PlayType[]).map((playType) => (
-          <Button
-            key={playType}
-            variant={playType === "total" ? "gold" : playType === "combinado" ? "violet" : "cyan"}
-            size="md"
-            fullWidth
-            disabled={busy || match.impulseLeft < PLAY_COST[playType]}
-            onClick={() => void play(playType)}
-          >
-            {PLAY_LABELS[playType]} · {PLAY_COST[playType]} impulso
+      {/* Paso 1: rival */}
+      {step === "rival" && match.rivalPlay && (
+        <div className="rounded-2xl border border-violet-400/40 bg-violet-500/10 p-4 space-y-3">
+          <p className="text-[11px] font-display tracking-widest uppercase text-violet-200/80">
+            1 · El rival ya eligió
+          </p>
+          <p className="font-display text-xl text-text-primary">
+            {match.rivalPlay.label}
+          </p>
+          <p className="text-sm text-text-secondary">
+            Arriesga <span className="text-amber-200 font-display">{match.rivalPlay.cost}</span>{" "}
+            de impulso · riesgo {match.rivalPlay.risk}
+          </p>
+          <p className="text-xs text-text-tertiary">{match.rivalPlay.ifWin} si gana los duelos.</p>
+          <p className="text-xs text-text-muted">
+            Estilo rival: {match.styleBot}. Ahora te toca responder.
+          </p>
+          <Button variant="cyan" size="md" fullWidth onClick={() => setStep("you")}>
+            Ver mi jugada
           </Button>
+        </div>
+      )}
+
+      {/* Paso 2: vos */}
+      {step === "you" && (
+        <div className="space-y-3">
+          <div className="rounded-2xl border border-cyan-400/40 bg-cyan-500/10 p-4 space-y-3">
+            <p className="text-[11px] font-display tracking-widest uppercase text-cyan-200/80">
+              2 · Tu turno · ¿cuánto arriesgás?
+            </p>
+            <p className="text-xs text-text-tertiary">
+              El impulso que pongas se gasta. Si ganás los duelos de puesto, sumás puntos
+              según lo arriesgado. Si perdés, el rival suma según lo que él arriesgó.
+            </p>
+
+            <div>
+              <p className="text-[11px] text-text-tertiary mb-2">Estrategia del equipo</p>
+              <div className="grid grid-cols-3 gap-2">
+                {(["ataque", "equilibrio", "defensa"] as StyleOpt[]).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setStyle(s)}
+                    className={cn(
+                      "h-10 rounded-xl text-[11px] font-display uppercase border",
+                      style === s
+                        ? "bg-cyan-400/20 border-cyan-400/50 text-cyan-100"
+                        : "bg-white/5 border-border-soft text-text-tertiary",
+                    )}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-[10px] text-text-muted">
+                Ataque sube el frente · Defensa el fondo · Equilibrio balancea.
+              </p>
+            </div>
+
+            <div>
+              <p className="text-[11px] text-text-tertiary mb-2">
+                Mover fichas (tocá dos puestos para intercambiar)
+              </p>
+              <div className="grid grid-cols-5 gap-1">
+                {(["POR", "DEF", "MC1", "MC2", "DEL"] as F5Slot[]).map((slot) => {
+                  const p = youBySlot.get(slot);
+                  const selected = swapA === slot;
+                  const inSwap =
+                    pendingSwap &&
+                    (pendingSwap[0] === slot || pendingSwap[1] === slot);
+                  return (
+                    <button
+                      key={slot}
+                      type="button"
+                      onClick={() => onTapSlot(slot)}
+                      className={cn(
+                        "rounded-lg border px-1 py-2 text-center",
+                        selected || inSwap
+                          ? "border-amber-400/60 bg-amber-400/15"
+                          : activeSet.has(slot)
+                            ? "border-cyan-400/40 bg-cyan-400/10"
+                            : "border-white/10 bg-black/20",
+                      )}
+                    >
+                      <div className="text-[9px] text-text-tertiary">{SLOT_LABELS[slot]}</div>
+                      <div className="font-mono text-xs text-amber-200">{p?.rating}</div>
+                    </button>
+                  );
+                })}
+              </div>
+              {pendingSwap && (
+                <p className="mt-1 text-[11px] text-amber-200">
+                  Vas a intercambiar {SLOT_LABELS[pendingSwap[0]]} ↔{" "}
+                  {SLOT_LABELS[pendingSwap[1]]} al jugar.
+                  <button
+                    type="button"
+                    className="ml-2 underline"
+                    onClick={() => setPendingSwap(null)}
+                  >
+                    Cancelar
+                  </button>
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <LineupMini title="Vos" players={match.you} active={activeSet} accent="cyan" />
+            <LineupMini title="Rival" players={match.rival} active={activeSet} accent="violet" />
+          </div>
+
+          {error && <p className="text-sm text-red-400 text-center">{error}</p>}
+
+          <div className="space-y-2">
+            {match.playOptions.map((opt) => (
+              <button
+                key={opt.playType}
+                type="button"
+                disabled={busy || !opt.canAfford}
+                onClick={() => void play(opt.playType)}
+                className={cn(
+                  "w-full rounded-2xl border px-4 py-3 text-left transition disabled:opacity-40",
+                  opt.playType === "total"
+                    ? "border-amber-400/40 bg-amber-400/10"
+                    : opt.playType === "combinado"
+                      ? "border-violet-400/40 bg-violet-400/10"
+                      : "border-cyan-400/40 bg-cyan-400/10",
+                )}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-display text-base text-text-primary">{opt.label}</span>
+                  <span className="font-display text-amber-200">
+                    −{opt.cost} impulso
+                  </span>
+                </div>
+                <div className="mt-1 text-[11px] text-text-tertiary">
+                  Riesgo {opt.risk} · Si ganás ≈ +{opt.approxWinPoints} pts · {opt.ifWin}
+                </div>
+                <div className="text-[11px] text-text-muted">{opt.ifLose}</div>
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            className="w-full text-xs text-text-tertiary underline"
+            onClick={() => setStep("rival")}
+          >
+            Volver a ver al rival
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ValuesPanel({
+  title,
+  values,
+  accent,
+}: {
+  title: string;
+  values: TeamValues;
+  accent: "cyan" | "violet";
+}) {
+  const items: Array<{ key: keyof TeamValues; label: string }> = [
+    { key: "ataque", label: "Ataque" },
+    { key: "mediocampo", label: "Medio" },
+    { key: "defensa", label: "Defensa" },
+    { key: "arquero", label: "Arquero" },
+    { key: "equilibrio", label: "Equil." },
+  ];
+
+  return (
+    <div
+      className={cn(
+        "rounded-xl border px-2 py-2",
+        accent === "cyan" ? "border-cyan-400/20 bg-cyan-400/5" : "border-violet-400/20 bg-violet-400/5",
+      )}
+    >
+      <p className="text-[10px] uppercase tracking-wider text-text-tertiary mb-1 px-1">
+        {title}
+      </p>
+      <div className="grid grid-cols-5 gap-1">
+        {items.map((item) => (
+          <div key={item.key} className="rounded-lg bg-black/25 px-1 py-1.5 text-center">
+            <div className="text-[9px] text-text-muted">{item.label}</div>
+            <div
+              className={cn(
+                "font-display text-sm",
+                accent === "cyan" ? "text-cyan-200" : "text-violet-200",
+              )}
+            >
+              {item.key === "equilibrio" ? `+${values[item.key]}%` : values[item.key]}
+            </div>
+          </div>
         ))}
       </div>
     </div>
   );
 }
 
-function LineupColumn({
+function LineupMini({
   title,
   players,
+  active,
   accent,
-  activeSlots,
 }: {
   title: string;
   players: PublicPlayer[];
+  active: Set<F5Slot>;
   accent: "cyan" | "violet";
-  activeSlots: Set<F5Slot>;
 }) {
   const order: F5Slot[] = ["DEL", "MC1", "MC2", "DEF", "POR"];
   const bySlot = new Map(players.map((p) => [p.slot, p]));
@@ -280,49 +508,26 @@ function LineupColumn({
   return (
     <div
       className={cn(
-        "rounded-2xl border p-3 space-y-2",
-        accent === "cyan" ? "border-cyan-400/25 bg-cyan-400/5" : "border-violet-400/25 bg-violet-400/5",
+        "rounded-xl border p-2 space-y-1",
+        accent === "cyan" ? "border-cyan-400/20" : "border-violet-400/20",
       )}
     >
-      <h2 className="font-display text-xs tracking-wider uppercase text-text-tertiary">{title}</h2>
+      <p className="text-[10px] uppercase text-text-tertiary">{title}</p>
       {order.map((slot) => {
         const p = bySlot.get(slot);
         if (!p) return null;
-        const fighting = activeSlots.has(slot);
         return (
           <div
             key={slot}
             className={cn(
-              "rounded-xl border px-2 py-1.5 flex items-center gap-2",
-              fighting
-                ? accent === "cyan"
-                  ? "border-cyan-400/50 bg-cyan-400/15"
-                  : "border-violet-400/50 bg-violet-400/15"
-                : "border-white/10 bg-black/20 opacity-70",
+              "flex justify-between text-[11px] px-1 py-0.5 rounded",
+              active.has(slot) ? "bg-white/10" : "opacity-50",
             )}
           >
-            {p.imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={p.imageUrl}
-                alt=""
-                className="w-8 h-8 rounded-md object-cover shrink-0"
-              />
-            ) : (
-              <div className="w-8 h-8 rounded-md bg-white/10 flex items-center justify-center text-sm shrink-0">
-                {p.flag}
-              </div>
-            )}
-            <div className="min-w-0 flex-1">
-              <div className="text-[10px] text-text-tertiary uppercase">
-                {SLOT_LABELS[slot]}
-              </div>
-              <div className="font-display text-xs text-text-primary truncate">{p.name}</div>
-            </div>
-            <div className="text-right shrink-0">
-              <div className="font-mono text-sm text-amber-200">{p.rating}</div>
-              <div className="text-[9px] text-text-muted">{p.position}</div>
-            </div>
+            <span className="truncate">
+              {SLOT_LABELS[slot].slice(0, 3)} {p.name.split(" ").slice(-1)[0]}
+            </span>
+            <span className="font-mono text-amber-200">{p.rating}</span>
           </div>
         );
       })}

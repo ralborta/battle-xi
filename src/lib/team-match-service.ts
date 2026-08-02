@@ -15,8 +15,11 @@ import {
   type F5Slot,
   IMPULSE_START,
   MOMENTS_TOTAL,
+  MOMENT_HELP,
   MOMENT_LABELS,
   PLAY_COST,
+  PLAY_INFO,
+  PLAY_LABELS,
   type PlayType,
   POSITION_WIN_XP,
   TEAM_REWARDS,
@@ -73,12 +76,14 @@ export interface SlotDuel {
   botPoints: number;
   winner: "user" | "bot" | "tie";
   userCardId: string | null;
+  why: string;
 }
 
 export interface MomentLog {
   index: number;
   label: string;
   playType: PlayType;
+  botPlayType: PlayType;
   impulseSpent: number;
   zone: ZoneId;
   userPower: number;
@@ -87,6 +92,7 @@ export interface MomentLog {
   botPoints: number;
   winner: "user" | "bot" | "tie";
   hint: string;
+  why: string;
   duels: SlotDuel[];
 }
 
@@ -117,7 +123,6 @@ function fromCard(slot: F5Slot, card: Card & { template?: PlayerTemplate | null 
   };
 }
 
-/** Bonus de conexión: puestos correctos + plantel completo + sin flancos flojos. */
 export function connectionBonus(lineup: LineupPlayer[]): number {
   let bonus = 0;
   const filled = lineup.filter((p) => !p.isAcademy);
@@ -144,7 +149,6 @@ export function connectionBonus(lineup: LineupPlayer[]): number {
   return Math.min(5, bonus);
 }
 
-/** Poder individual del jugador en su puesto (rating + fit + rol + zona). */
 export function slotPower(
   player: LineupPlayer,
   style: TeamStyle,
@@ -167,10 +171,16 @@ export function zonePower(lineup: LineupPlayer[], zone: ZoneId, style: TeamStyle
   return clampPower(values.reduce((a, b) => a + b, 0) / values.length);
 }
 
-function playMultiplier(play: PlayType): { win: number; lose: number } {
-  if (play === "seguro") return { win: 1, lose: 0.5 };
-  if (play === "combinado") return { win: 1.4, lose: 1 };
-  return { win: 2, lose: 1.5 };
+export function teamValues(lineup: LineupPlayer[], style: TeamStyle) {
+  const ataque = zonePower(lineup, "ataque", style);
+  const mediocampo = zonePower(lineup, "mediocampo", style);
+  const defensa = zonePower(lineup, "defensa", style);
+  const por = lineup.find((p) => p.slot === "POR");
+  const arquero = por
+    ? slotPower(por, style, "defensa", lineup)
+    : 40;
+  const equilibrio = connectionBonus(lineup);
+  return { ataque, mediocampo, defensa, arquero, equilibrio };
 }
 
 function hash(input: string): number {
@@ -184,6 +194,32 @@ function hash(input: string): number {
 
 function push(seed: string, moment: number, slot: string, side: string): number {
   return (hash(`${seed}:${moment}:${slot}:${side}`) % 7) - 3;
+}
+
+/**
+ * El rival elige primero (determinístico por seed + momento + su estilo).
+ * No depende de tus cambios, así lo que ves es lo que realmente juega.
+ */
+export function pickBotPlay(
+  seed: string,
+  momentIndex: number,
+  styleBot: TeamStyle,
+): PlayType {
+  const roll = hash(`${seed}:botplay:${momentIndex}`) % 100;
+
+  if (styleBot === "ataque") {
+    if (roll < 25) return "seguro";
+    if (roll < 60) return "combinado";
+    return "total";
+  }
+  if (styleBot === "defensa") {
+    if (roll < 50) return "seguro";
+    if (roll < 85) return "combinado";
+    return "total";
+  }
+  if (roll < 34) return "seguro";
+  if (roll < 70) return "combinado";
+  return "total";
 }
 
 async function buildUserLineup(userId: string): Promise<LineupPlayer[]> {
@@ -294,20 +330,39 @@ function asMoments(raw: unknown): MomentLog[] {
   return (raw as MomentLog[]) ?? [];
 }
 
+function swapLineupSlots(lineup: LineupPlayer[], a: F5Slot, b: F5Slot): LineupPlayer[] {
+  if (a === b) return lineup;
+  const copy = lineup.map((p) => ({ ...p }));
+  const ia = copy.findIndex((p) => p.slot === a);
+  const ib = copy.findIndex((p) => p.slot === b);
+  if (ia < 0 || ib < 0) {
+    throw new TeamGameError("No se pudo mover esas fichas", 400);
+  }
+  const playerA = { ...copy[ia], slot: b };
+  const playerB = { ...copy[ib], slot: a };
+  copy[ia] = playerB;
+  copy[ib] = playerA;
+  // Orden estable por F5_SLOTS
+  return F5_SLOTS.map((slot) => copy.find((p) => p.slot === slot)!);
+}
+
 function resolveDuels(
   lineupUser: LineupPlayer[],
   lineupBot: LineupPlayer[],
   styleUser: TeamStyle,
   styleBot: TeamStyle,
   momentIndex: number,
-  playType: PlayType,
+  userPlay: PlayType,
+  botPlay: PlayType,
   seed: string,
 ): { duels: SlotDuel[]; userPoints: number; botPoints: number; userPower: number; botPower: number } {
   const slots = momentSlots(momentIndex);
-  const zone = momentZone(momentIndex);
-  const mult = playMultiplier(playType);
-  const cost = PLAY_COST[playType];
-  const basePerSlot = cost / slots.length;
+  const userInfo = PLAY_INFO[userPlay];
+  const botInfo = PLAY_INFO[botPlay];
+  const userCost = PLAY_COST[userPlay];
+  const botCost = PLAY_COST[botPlay];
+  const userBase = userCost / slots.length;
+  const botBase = botCost / slots.length;
 
   const duels: SlotDuel[] = slots.map((slot) => {
     const userP = lineupUser.find((p) => p.slot === slot)!;
@@ -329,23 +384,26 @@ function resolveDuels(
     let winner: SlotDuel["winner"] = "tie";
     let userPoints = 0;
     let botPoints = 0;
+    let why = "";
 
     if (userPower > botPower) {
       winner = "user";
-      // Más rating y mejor puesto → más puntos al ganar el choque.
       userPoints = Math.max(
         1,
-        Math.round(basePerSlot * mult.win * (userP.rating / 70) * fitUser),
+        Math.round(userBase * userInfo.winMult * (userP.rating / 70) * fitUser),
       );
+      why = `${userP.name} (${userPower}) ganó a ${botP.name} (${botPower}) → +${userPoints} pts`;
     } else if (botPower > userPower) {
       winner = "bot";
       botPoints = Math.max(
         1,
-        Math.round(basePerSlot * mult.lose * (botP.rating / 70) * fitBot),
+        Math.round(botBase * botInfo.winMult * (botP.rating / 70) * fitBot),
       );
+      why = `${botP.name} (${botPower}) ganó a ${userP.name} (${userPower}) → rival +${botPoints}`;
     } else {
-      userPoints = Math.max(1, Math.round(basePerSlot * 0.35));
-      botPoints = Math.max(1, Math.round(basePerSlot * 0.35));
+      userPoints = Math.max(1, Math.round(userBase * 0.35));
+      botPoints = Math.max(1, Math.round(botBase * 0.35));
+      why = `${userP.name} y ${botP.name} empataron (${userPower})`;
     }
 
     return {
@@ -358,6 +416,7 @@ function resolveDuels(
       botPoints,
       winner,
       userCardId: userP.cardId,
+      why,
     };
   });
 
@@ -376,8 +435,13 @@ function resolveDuels(
 export async function playTeamMoment(
   user: User,
   matchId: string,
-  playType: PlayType,
+  input: {
+    playType: PlayType;
+    style?: TeamStyle;
+    swap?: [F5Slot, F5Slot];
+  },
 ) {
+  const playType = input.playType;
   if (!PLAY_COST[playType]) {
     throw new TeamGameError("Elegí un tipo de jugada válido", 400);
   }
@@ -393,17 +457,25 @@ export async function playTeamMoment(
     throw new TeamGameError("No te alcanza el impulso para esa jugada", 409);
   }
 
-  const lineupUser = asLineup(match.lineupUser);
+  let lineupUser = asLineup(match.lineupUser);
   const lineupBot = asLineup(match.lineupBot);
+  const styleUser = input.style ?? match.styleUser;
   const zone = momentZone(match.momentIndex);
+
+  if (input.swap) {
+    lineupUser = swapLineupSlots(lineupUser, input.swap[0], input.swap[1]);
+  }
+
+  const botPlay = pickBotPlay(match.seed, match.momentIndex, match.styleBot);
 
   const resolved = resolveDuels(
     lineupUser,
     lineupBot,
-    match.styleUser,
+    styleUser,
     match.styleBot,
     match.momentIndex,
     playType,
+    botPlay,
     match.seed,
   );
 
@@ -414,10 +486,21 @@ export async function playTeamMoment(
   const wins = resolved.duels.filter((d) => d.winner === "user").length;
   const losses = resolved.duels.filter((d) => d.winner === "bot").length;
 
+  const whyParts = [
+    `Rival jugó ${PLAY_LABELS[botPlay]} (arriesgó ${PLAY_COST[botPlay]}).`,
+    `Vos jugaste ${PLAY_LABELS[playType]} (arriesgaste ${cost}).`,
+    winner === "user"
+      ? `Ganaste el momento ${resolved.userPoints} a ${resolved.botPoints} porque ganaste ${wins} duelo(s) de puesto.`
+      : winner === "bot"
+        ? `Perdiste el momento ${resolved.userPoints} a ${resolved.botPoints}: el rival ganó ${losses} duelo(s).`
+        : `Momento empatado ${resolved.userPoints} a ${resolved.botPoints}.`,
+  ];
+
   const log: MomentLog = {
     index: match.momentIndex,
     label: MOMENT_LABELS[match.momentIndex],
     playType,
+    botPlayType: botPlay,
     impulseSpent: cost,
     zone,
     userPower: resolved.userPower,
@@ -431,6 +514,7 @@ export async function playTeamMoment(
         : winner === "bot"
           ? `El rival ganó ${losses} duelo${losses === 1 ? "" : "s"} de puesto`
           : "Choques parejos en los puestos",
+    why: whyParts.join(" "),
     duels: resolved.duels,
   };
 
@@ -441,10 +525,19 @@ export async function playTeamMoment(
   const nextMoment = match.momentIndex + 1;
   const finished = nextMoment >= MOMENTS_TOTAL;
 
-  // XP a las cartas que ganaron su puesto en este momento.
   const winningCardIds = resolved.duels
     .filter((d) => d.winner === "user" && d.userCardId)
     .map((d) => d.userCardId as string);
+
+  const baseData = {
+    moments: moments as unknown as Prisma.InputJsonValue,
+    scoreUser,
+    scoreOpponent,
+    impulseLeft,
+    momentIndex: nextMoment,
+    styleUser,
+    lineupUser: lineupUser as unknown as Prisma.InputJsonValue,
+  };
 
   if (!finished) {
     if (winningCardIds.length > 0) {
@@ -455,13 +548,7 @@ export async function playTeamMoment(
     }
     return prisma.teamMatch.update({
       where: { id: match.id },
-      data: {
-        moments: moments as unknown as Prisma.InputJsonValue,
-        scoreUser,
-        scoreOpponent,
-        impulseLeft,
-        momentIndex: nextMoment,
-      },
+      data: baseData,
     });
   }
 
@@ -473,11 +560,7 @@ export async function playTeamMoment(
     prisma.teamMatch.update({
       where: { id: match.id },
       data: {
-        moments: moments as unknown as Prisma.InputJsonValue,
-        scoreUser,
-        scoreOpponent,
-        impulseLeft,
-        momentIndex: nextMoment,
+        ...baseData,
         status: "finished",
         result,
         finishedAt: new Date(),
@@ -530,18 +613,29 @@ export function toTeamMatchView(match: TeamMatch) {
   const lineupUser = asLineup(match.lineupUser);
   const lineupBot = asLineup(match.lineupBot);
   const moments = asMoments(match.moments);
-  const activeSlots = momentSlots(Math.min(match.momentIndex, MOMENTS_TOTAL - 1));
+  const idx = Math.min(match.momentIndex, MOMENTS_TOTAL - 1);
+  const activeSlots = momentSlots(idx);
+  const zone = momentZone(idx);
 
-  const zones = (["defensa", "mediocampo", "ataque"] as ZoneId[]).map((zone) => {
-    const power = zonePower(lineupBot, zone, match.styleBot);
-    return {
-      zone,
-      range: [Math.max(40, power - 4), Math.min(100, power + 4)] as [number, number],
-      cards: lineupBot
-        .filter((p) => zoneOfSlot(p.slot) === zone)
-        .map((p) => publicPlayer(p)),
-    };
-  });
+  const youValues = teamValues(lineupUser, match.styleUser);
+  const rivalValues = teamValues(lineupBot, match.styleBot);
+
+  const userZone = zonePower(lineupUser, zone, match.styleUser);
+  const botZone = zonePower(lineupBot, zone, match.styleBot);
+  const rivalPlayType =
+    match.status === "active"
+      ? pickBotPlay(match.seed, match.momentIndex, match.styleBot)
+      : null;
+
+  const estimateWin = (play: PlayType) => {
+    const slots = activeSlots.length;
+    const avgRating =
+      lineupUser
+        .filter((p) => activeSlots.includes(p.slot))
+        .reduce((a, p) => a + p.rating, 0) / Math.max(1, slots);
+    const base = PLAY_COST[play] / slots;
+    return Math.max(1, Math.round(base * PLAY_INFO[play].winMult * (avgRating / 70) * slots));
+  };
 
   return {
     id: match.id,
@@ -554,14 +648,33 @@ export function toTeamMatchView(match: TeamMatch) {
     scoreOpponent: match.scoreOpponent,
     momentIndex: match.momentIndex,
     momentsTotal: MOMENTS_TOTAL,
-    momentLabel: MOMENT_LABELS[Math.min(match.momentIndex, MOMENTS_TOTAL - 1)],
-    activeZone: momentZone(Math.min(match.momentIndex, MOMENTS_TOTAL - 1)),
+    momentLabel: MOMENT_LABELS[idx],
+    momentHelp: MOMENT_HELP[idx],
+    activeZone: zone,
     activeSlots,
     moments,
     you: lineupUser.map(publicPlayer),
     rival: lineupBot.map(publicPlayer),
-    rivalZones: zones,
-    connection: connectionBonus(lineupUser),
+    youValues,
+    rivalValues,
+    connection: youValues.equilibrio,
+    rivalPlay: rivalPlayType
+      ? {
+          playType: rivalPlayType,
+          label: PLAY_LABELS[rivalPlayType],
+          cost: PLAY_COST[rivalPlayType],
+          risk: PLAY_INFO[rivalPlayType].risk,
+          ifWin: PLAY_INFO[rivalPlayType].ifWin,
+          zonePower: botZone,
+        }
+      : null,
+    yourZonePower: userZone,
+    playOptions: (Object.keys(PLAY_COST) as PlayType[]).map((playType) => ({
+      playType,
+      ...PLAY_INFO[playType],
+      canAfford: match.impulseLeft >= PLAY_COST[playType],
+      approxWinPoints: estimateWin(playType),
+    })),
     rewards:
       match.status === "finished"
         ? {
