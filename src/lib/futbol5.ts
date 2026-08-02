@@ -98,20 +98,59 @@ export const MOMENT_LABELS = [
   "Decisivo",
 ] as const;
 
-/** Zona que se disputa en cada momento (incluye defensa). */
+/** Slots que componen cada zona. */
+export function slotsForZone(zone: ZoneId): F5Slot[] {
+  if (zone === "defensa") return ["POR", "DEF"];
+  if (zone === "ataque") return ["DEL"];
+  return ["MC1", "MC2"];
+}
+
+/**
+ * Si el rival PRESIONA una zona, pelea contra tu zona de respuesta:
+ * - Presiona ataque → su ataque vs tu defensa
+ * - Presiona mediocampo → medio vs medio
+ * - Presiona defensa (se cierra) → tu ataque vs su defensa
+ */
+export function responseZone(pressure: ZoneId): ZoneId {
+  if (pressure === "ataque") return "defensa";
+  if (pressure === "defensa") return "ataque";
+  return "mediocampo";
+}
+
+export function pressureHelp(pressure: ZoneId): string {
+  if (pressure === "ataque") {
+    return "El rival ataca. Pelea su ATAQUE contra tu DEFENSA. Reforzá la defensa.";
+  }
+  if (pressure === "defensa") {
+    return "El rival se cierra atrás. Pelea tu ATAQUE contra su DEFENSA. Reforzá el ataque.";
+  }
+  return "El rival pelea el medio. Mediocampo vs mediocampo. Reforzá el medio.";
+}
+
+/** Máximo de intercambios de puestos por turno. */
+export const MAX_SWAPS_PER_TURN = 1;
+
+/** Bonus/penalidad táctica al reforzar bien o mal. */
+export const TACTIC_CORRECT_BONUS = 0.18;
+export const TACTIC_WRONG_PENALTY = 0.08;
+export const REINFORCE_ZONE_BOOST = 0.12;
+
+/** Comprime diferencias de poder: la estrategia pesa más que el OVR puro. */
+export function softenPower(power: number): number {
+  return Math.round(50 + (power - 50) * 0.55);
+}
+
+/** @deprecated Usar presión del rival + responseZone. */
 export function momentZone(index: number): ZoneId {
   if (index === 0) return "defensa";
   if (index === 1) return "mediocampo";
   if (index === 2) return "ataque";
-  return "ataque"; // Decisivo: se resuelve aparte (todas las posiciones)
+  return "ataque";
 }
 
-/** Slots que pelean en ese momento. El decisivo enfrenta a los 5. */
+/** @deprecated */
 export function momentSlots(index: number): F5Slot[] {
-  if (index === 0) return ["POR", "DEF"];
-  if (index === 1) return ["MC1", "MC2"];
-  if (index === 2) return ["DEL"];
-  return [...F5_SLOTS];
+  return slotsForZone(momentZone(index));
 }
 
 /** XP que gana una carta al ganar su duelo de puesto. */
@@ -183,10 +222,10 @@ export const ZONE_LABELS: Record<ZoneId | "arquero" | "equilibrio", string> = {
 };
 
 export const MOMENT_HELP: Record<number, string> = {
-  0: "Choque defensivo: pelean arquero y defensa. Si ganás, recuperás el balón.",
-  1: "Construcción: pelean los mediocampistas. Controlás el ritmo.",
-  2: "Definición: pelea el delantero. Acá se definen goles.",
-  3: "Decisivo: pelean los 5 puestos. Todo cuenta.",
+  0: "Recuperación: el rival elige dónde presionar. Leé su jugada y reforzá la zona correcta.",
+  1: "Construcción: misma idea — su presión vs tu respuesta. La lectura vale más que el OVR.",
+  2: "Definición: si se lanzan al ataque, tu defensa tiene que aguantar.",
+  3: "Decisivo: última lectura. Un refuerzo bien puesto puede dar vuelta el partido.",
 };
 
 /** Recompensas del partido de equipo (más que el 1v1 básico). */

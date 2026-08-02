@@ -14,6 +14,7 @@ import {
   F5_SLOTS,
   type F5Slot,
   IMPULSE_START,
+  MAX_SWAPS_PER_TURN,
   MOMENTS_TOTAL,
   MOMENT_HELP,
   MOMENT_LABELS,
@@ -22,10 +23,16 @@ import {
   PLAY_LABELS,
   type PlayType,
   POSITION_WIN_XP,
+  REINFORCE_ZONE_BOOST,
+  TACTIC_CORRECT_BONUS,
+  TACTIC_WRONG_PENALTY,
   TEAM_REWARDS,
+  ZONE_LABELS,
   clampPower,
-  momentSlots,
-  momentZone,
+  pressureHelp,
+  responseZone,
+  slotsForZone,
+  softenPower,
   positionFit,
   rolePower,
   slotPosition,
@@ -85,6 +92,12 @@ export interface MomentLog {
   playType: PlayType;
   botPlayType: PlayType;
   impulseSpent: number;
+  /** Zona que presiona el rival. */
+  pressure: ZoneId;
+  /** Zona tuya que responde. */
+  response: ZoneId;
+  reinforce: ZoneId | null;
+  tacticCorrect: boolean;
   zone: ZoneId;
   userPower: number;
   botPower: number;
@@ -222,6 +235,33 @@ export function pickBotPlay(
   return "total";
 }
 
+/** Dónde presiona el rival este turno (vos tenés que leerlo y reforzar la respuesta). */
+export function pickBotPressure(
+  seed: string,
+  momentIndex: number,
+  styleBot: TeamStyle,
+): ZoneId {
+  const roll = hash(`${seed}:pressure:${momentIndex}`) % 100;
+  const zones: ZoneId[] = ["ataque", "mediocampo", "defensa"];
+
+  // Sesgo por estilo, con ruido para que no sea predecible al 100%.
+  if (styleBot === "ataque") {
+    if (roll < 55) return "ataque";
+    if (roll < 80) return "mediocampo";
+    return "defensa";
+  }
+  if (styleBot === "defensa") {
+    if (roll < 50) return "defensa";
+    if (roll < 75) return "mediocampo";
+    return "ataque";
+  }
+  // equilibrio + variación por momento
+  const bias = momentIndex % 3;
+  if (roll < 40) return zones[bias];
+  if (roll < 70) return zones[(bias + 1) % 3];
+  return zones[(bias + 2) % 3];
+}
+
 async function buildUserLineup(userId: string): Promise<LineupPlayer[]> {
   const squad = await getOrCreateFutbol5Squad(userId);
   const bySlot = new Map(squad.slots.map((s) => [s.slotKey, s.card]));
@@ -346,91 +386,149 @@ function swapLineupSlots(lineup: LineupPlayer[], a: F5Slot, b: F5Slot): LineupPl
   return F5_SLOTS.map((slot) => copy.find((p) => p.slot === slot)!);
 }
 
-function resolveDuels(
+function resolveTacticalClash(
   lineupUser: LineupPlayer[],
   lineupBot: LineupPlayer[],
   styleUser: TeamStyle,
   styleBot: TeamStyle,
   momentIndex: number,
+  pressure: ZoneId,
+  reinforce: ZoneId | null,
   userPlay: PlayType,
   botPlay: PlayType,
   seed: string,
   userCostScale = 1,
-): { duels: SlotDuel[]; userPoints: number; botPoints: number; userPower: number; botPower: number } {
-  const slots = momentSlots(momentIndex);
+): {
+  duels: SlotDuel[];
+  userPoints: number;
+  botPoints: number;
+  userPower: number;
+  botPower: number;
+  response: ZoneId;
+  tacticCorrect: boolean;
+} {
+  const response = responseZone(pressure);
+  const userSlots = slotsForZone(response);
+  const botSlots = slotsForZone(pressure);
+
+  // Parear puestos (si hay distinto número, se repiten del lado más corto).
+  const pairCount = Math.max(userSlots.length, botSlots.length);
+  const pairs: Array<{ userSlot: F5Slot; botSlot: F5Slot }> = [];
+  for (let i = 0; i < pairCount; i++) {
+    pairs.push({
+      userSlot: userSlots[i % userSlots.length],
+      botSlot: botSlots[i % botSlots.length],
+    });
+  }
+
+  let userZonePow = softenPower(zonePower(lineupUser, response, styleUser));
+  let botZonePow = softenPower(zonePower(lineupBot, pressure, styleBot));
+
+  const tacticCorrect = reinforce === response;
+  if (reinforce === response) {
+    userZonePow = clampPower(userZonePow * (1 + REINFORCE_ZONE_BOOST + TACTIC_CORRECT_BONUS));
+  } else if (reinforce) {
+    userZonePow = clampPower(userZonePow * (1 - TACTIC_WRONG_PENALTY));
+    // Reforzaste otra zona: ese boost no ayuda al choque principal.
+  }
+
   const userInfo = PLAY_INFO[userPlay];
   const botInfo = PLAY_INFO[botPlay];
   const userCost = PLAY_COST[userPlay] * userCostScale;
   const botCost = PLAY_COST[botPlay];
-  const userBase = userCost / slots.length;
-  const botBase = botCost / slots.length;
 
-  const duels: SlotDuel[] = slots.map((slot) => {
-    const userP = lineupUser.find((p) => p.slot === slot)!;
-    const botP = lineupBot.find((p) => p.slot === slot)!;
-    const duelZone = zoneOfSlot(slot);
-
-    const userPower = clampPower(
-      slotPower(userP, styleUser, duelZone, lineupUser) +
-        push(seed, momentIndex, slot, "user"),
+  // ~70% del puntaje viene del choque de zona (lectura táctica).
+  let userPoints = 0;
+  let botPoints = 0;
+  if (userZonePow > botZonePow + 1) {
+    userPoints += Math.max(
+      2,
+      Math.round(userCost * 0.7 * userInfo.winMult * (userZonePow / 80)),
     );
-    const botPower = clampPower(
-      slotPower(botP, styleBot, duelZone, lineupBot) +
-        push(seed, momentIndex, slot, "bot"),
+  } else if (botZonePow > userZonePow + 1) {
+    botPoints += Math.max(
+      2,
+      Math.round(botCost * 0.7 * botInfo.winMult * (botZonePow / 80)),
+    );
+  } else {
+    userPoints += Math.max(1, Math.round(userCost * 0.25));
+    botPoints += Math.max(1, Math.round(botCost * 0.25));
+  }
+
+  // ~30% en duelos individuales (narrativa + un poco de OVR).
+  const duelShare = 0.3;
+  const userBase = (userCost * duelShare) / pairs.length;
+  const botBase = (botCost * duelShare) / pairs.length;
+
+  const duels: SlotDuel[] = pairs.map(({ userSlot, botSlot }, i) => {
+    const userP = lineupUser.find((p) => p.slot === userSlot)!;
+    const botP = lineupBot.find((p) => p.slot === botSlot)!;
+
+    let uPow = softenPower(
+      slotPower(userP, styleUser, response, lineupUser) +
+        push(seed, momentIndex, `${userSlot}-${i}`, "user"),
+    );
+    let bPow = softenPower(
+      slotPower(botP, styleBot, pressure, lineupBot) +
+        push(seed, momentIndex, `${botSlot}-${i}`, "bot"),
     );
 
-    const fitUser = positionFit(userP.position as never, slot, userP.compatible as never[]);
-    const fitBot = positionFit(botP.position as never, slot, botP.compatible as never[]);
+    if (tacticCorrect) uPow = clampPower(uPow * (1 + TACTIC_CORRECT_BONUS * 0.5));
+
+    const fitUser = positionFit(userP.position as never, userSlot, userP.compatible as never[]);
+    const fitBot = positionFit(botP.position as never, botSlot, botP.compatible as never[]);
 
     let winner: SlotDuel["winner"] = "tie";
-    let userPoints = 0;
-    let botPoints = 0;
+    let uPts = 0;
+    let bPts = 0;
     let why = "";
 
-    if (userPower > botPower) {
+    if (uPow > bPow) {
       winner = "user";
-      userPoints = Math.max(
+      uPts = Math.max(
         1,
-        Math.round(userBase * userInfo.winMult * (userP.rating / 70) * fitUser),
+        Math.round(userBase * userInfo.winMult * (0.7 + 0.3 * (userP.rating / 80)) * fitUser),
       );
-      why = `${userP.name} (${userPower}) ganó a ${botP.name} (${botPower}) → +${userPoints} pts`;
-    } else if (botPower > userPower) {
+      why = `${userP.name} (${uPow}) frenó/superó a ${botP.name} (${bPow}) → +${uPts}`;
+    } else if (bPow > uPow) {
       winner = "bot";
-      botPoints = Math.max(
+      bPts = Math.max(
         1,
-        Math.round(botBase * botInfo.winMult * (botP.rating / 70) * fitBot),
+        Math.round(botBase * botInfo.winMult * (0.7 + 0.3 * (botP.rating / 80)) * fitBot),
       );
-      why = `${botP.name} (${botPower}) ganó a ${userP.name} (${userPower}) → rival +${botPoints}`;
+      why = `${botP.name} (${bPow}) ganó a ${userP.name} (${uPow}) → rival +${bPts}`;
     } else {
-      userPoints = Math.max(1, Math.round(userBase * 0.35));
-      botPoints = Math.max(1, Math.round(botBase * 0.35));
-      why = `${userP.name} y ${botP.name} empataron (${userPower})`;
+      uPts = Math.max(1, Math.round(userBase * 0.35));
+      bPts = Math.max(1, Math.round(botBase * 0.35));
+      why = `${userP.name} y ${botP.name} empataron`;
     }
 
+    userPoints += uPts;
+    botPoints += bPts;
+
     return {
-      slot,
+      slot: userSlot,
       userName: userP.name,
       botName: botP.name,
-      userPower,
-      botPower,
-      userPoints,
-      botPoints,
+      userPower: uPow,
+      botPower: bPow,
+      userPoints: uPts,
+      botPoints: bPts,
       winner,
       userCardId: userP.cardId,
       why,
     };
   });
 
-  const userPoints = duels.reduce((a, d) => a + d.userPoints, 0);
-  const botPoints = duels.reduce((a, d) => a + d.botPoints, 0);
-  const userPower = clampPower(
-    duels.reduce((a, d) => a + d.userPower, 0) / duels.length,
-  );
-  const botPower = clampPower(
-    duels.reduce((a, d) => a + d.botPower, 0) / duels.length,
-  );
-
-  return { duels, userPoints, botPoints, userPower, botPower };
+  return {
+    duels,
+    userPoints,
+    botPoints,
+    userPower: userZonePow,
+    botPower: botZonePow,
+    response,
+    tacticCorrect,
+  };
 }
 
 export async function playTeamMoment(
@@ -440,6 +538,7 @@ export async function playTeamMoment(
     playType: PlayType;
     style?: TeamStyle;
     swap?: [F5Slot, F5Slot];
+    reinforce?: ZoneId | null;
   },
 ) {
   const playType = input.playType;
@@ -461,7 +560,6 @@ export async function playTeamMoment(
   }
 
   if (match.impulseLeft < nominal) {
-    // Último aliento: podés cerrar el turno con lo que te queda (solo jugada segura).
     if (playType !== "seguro") {
       throw new TeamGameError(
         `Solo te quedan ${match.impulseLeft} de impulso. Usá la jugada segura.`,
@@ -474,41 +572,49 @@ export async function playTeamMoment(
   let lineupUser = asLineup(match.lineupUser);
   const lineupBot = asLineup(match.lineupBot);
   const styleUser = input.style ?? match.styleUser;
-  const zone = momentZone(match.momentIndex);
 
   if (input.swap) {
     lineupUser = swapLineupSlots(lineupUser, input.swap[0], input.swap[1]);
   }
 
+  const pressure = pickBotPressure(match.seed, match.momentIndex, match.styleBot);
   const botPlay = pickBotPlay(match.seed, match.momentIndex, match.styleBot);
+  const reinforce = input.reinforce ?? null;
+  const needed = responseZone(pressure);
 
-  const resolved = resolveDuels(
+  const resolved = resolveTacticalClash(
     lineupUser,
     lineupBot,
     styleUser,
     match.styleBot,
     match.momentIndex,
+    pressure,
+    reinforce,
     playType,
     botPlay,
     match.seed,
-    cost / nominal, // escala puntos si jugás con menos impulso
+    cost / nominal,
   );
 
   let winner: MomentLog["winner"] = "tie";
   if (resolved.userPoints > resolved.botPoints) winner = "user";
   else if (resolved.botPoints > resolved.userPoints) winner = "bot";
 
-  const wins = resolved.duels.filter((d) => d.winner === "user").length;
-  const losses = resolved.duels.filter((d) => d.winner === "bot").length;
-
   const whyParts = [
-    `Rival jugó ${PLAY_LABELS[botPlay]} (arriesgó ${PLAY_COST[botPlay]}).`,
-    `Vos jugaste ${PLAY_LABELS[playType]} (arriesgaste ${cost}).`,
+    `Rival presionó ${ZONE_LABELS[pressure]} con ${PLAY_LABELS[botPlay]} (−${PLAY_COST[botPlay]}).`,
+    `Respuesta correcta: reforzar ${ZONE_LABELS[needed]}.`,
+    reinforce
+      ? resolved.tacticCorrect
+        ? `Reforzaste bien ${ZONE_LABELS[reinforce]} (+bonus táctico).`
+        : `Reforzaste ${ZONE_LABELS[reinforce]} (zona incorrecta, penalidad).`
+      : "No reforzaste ninguna zona.",
+    `Choque de zona ${resolved.userPower} vs ${resolved.botPower}.`,
+    `Vos arriesgaste ${cost} (${PLAY_LABELS[playType]}).`,
     winner === "user"
-      ? `Ganaste el momento ${resolved.userPoints} a ${resolved.botPoints} porque ganaste ${wins} duelo(s) de puesto.`
+      ? `Ganaste el turno ${resolved.userPoints} a ${resolved.botPoints}.`
       : winner === "bot"
-        ? `Perdiste el momento ${resolved.userPoints} a ${resolved.botPoints}: el rival ganó ${losses} duelo(s).`
-        : `Momento empatado ${resolved.userPoints} a ${resolved.botPoints}.`,
+        ? `Perdiste el turno ${resolved.userPoints} a ${resolved.botPoints}.`
+        : `Empate ${resolved.userPoints} a ${resolved.botPoints}.`,
   ];
 
   const log: MomentLog = {
@@ -517,18 +623,21 @@ export async function playTeamMoment(
     playType,
     botPlayType: botPlay,
     impulseSpent: cost,
-    zone,
+    pressure,
+    response: resolved.response,
+    reinforce,
+    tacticCorrect: resolved.tacticCorrect,
+    zone: resolved.response,
     userPower: resolved.userPower,
     botPower: resolved.botPower,
     userPoints: resolved.userPoints,
     botPoints: resolved.botPoints,
     winner,
-    hint:
-      winner === "user"
-        ? `Ganaste ${wins} duelo${wins === 1 ? "" : "s"} de puesto`
-        : winner === "bot"
-          ? `El rival ganó ${losses} duelo${losses === 1 ? "" : "s"} de puesto`
-          : "Choques parejos en los puestos",
+    hint: resolved.tacticCorrect
+      ? "Lectura táctica correcta"
+      : reinforce
+        ? "Refuerzo en zona incorrecta"
+        : "Sin refuerzo táctico",
     why: whyParts.join(" "),
     duels: resolved.duels,
   };
@@ -629,27 +738,31 @@ export function toTeamMatchView(match: TeamMatch) {
   const lineupBot = asLineup(match.lineupBot);
   const moments = asMoments(match.moments);
   const idx = Math.min(match.momentIndex, MOMENTS_TOTAL - 1);
-  const activeSlots = momentSlots(idx);
-  const zone = momentZone(idx);
 
   const youValues = teamValues(lineupUser, match.styleUser);
   const rivalValues = teamValues(lineupBot, match.styleBot);
 
-  const userZone = zonePower(lineupUser, zone, match.styleUser);
-  const botZone = zonePower(lineupBot, zone, match.styleBot);
+  const pressure =
+    match.status === "active"
+      ? pickBotPressure(match.seed, match.momentIndex, match.styleBot)
+      : ("ataque" as ZoneId);
+  const response = responseZone(pressure);
+  const activeSlots = slotsForZone(response);
+  const rivalSlots = slotsForZone(pressure);
+
+  const yourZonePower = softenPower(zonePower(lineupUser, response, match.styleUser));
+  const rivalZonePower = softenPower(zonePower(lineupBot, pressure, match.styleBot));
   const rivalPlayType =
     match.status === "active"
       ? pickBotPlay(match.seed, match.momentIndex, match.styleBot)
       : null;
 
   const estimateWin = (play: PlayType) => {
-    const slots = activeSlots.length;
-    const avgRating =
-      lineupUser
-        .filter((p) => activeSlots.includes(p.slot))
-        .reduce((a, p) => a + p.rating, 0) / Math.max(1, slots);
-    const base = PLAY_COST[play] / slots;
-    return Math.max(1, Math.round(base * PLAY_INFO[play].winMult * (avgRating / 70) * slots));
+    const base = PLAY_COST[play] * 0.7;
+    return Math.max(
+      2,
+      Math.round(base * PLAY_INFO[play].winMult * (yourZonePower / 80)),
+    );
   };
 
   return {
@@ -665,8 +778,13 @@ export function toTeamMatchView(match: TeamMatch) {
     momentsTotal: MOMENTS_TOTAL,
     momentLabel: MOMENT_LABELS[idx],
     momentHelp: MOMENT_HELP[idx],
-    activeZone: zone,
+    pressure,
+    response,
+    pressureHelp: pressureHelp(pressure),
+    activeZone: response,
     activeSlots,
+    rivalSlots,
+    maxSwaps: MAX_SWAPS_PER_TURN,
     moments,
     you: lineupUser.map(publicPlayer),
     rival: lineupBot.map(publicPlayer),
@@ -680,10 +798,14 @@ export function toTeamMatchView(match: TeamMatch) {
           cost: PLAY_COST[rivalPlayType],
           risk: PLAY_INFO[rivalPlayType].risk,
           ifWin: PLAY_INFO[rivalPlayType].ifWin,
-          zonePower: botZone,
+          zonePower: rivalZonePower,
+          pressure,
+          pressureLabel: ZONE_LABELS[pressure],
+          response,
+          responseLabel: ZONE_LABELS[response],
         }
       : null,
-    yourZonePower: userZone,
+    yourZonePower,
     lastBreath: match.impulseLeft > 0 && match.impulseLeft < PLAY_COST.seguro,
     playOptions: (Object.keys(PLAY_COST) as PlayType[]).map((playType) => {
       const nominal = PLAY_COST[playType];

@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import type { F5Slot, PlayType } from "@/lib/futbol5";
+import type { F5Slot, PlayType, ZoneId } from "@/lib/futbol5";
 import { F5_SLOTS, PLAY_COST } from "@/lib/futbol5";
 import { TeamGameError, playTeamMoment, toTeamMatchView } from "@/lib/team-match-service";
 import type { TeamStyle } from "@/generated/prisma/client";
 
 const STYLES: TeamStyle[] = ["ataque", "equilibrio", "defensa"];
+const ZONES: ZoneId[] = ["ataque", "mediocampo", "defensa"];
 
 export async function POST(
   request: Request,
@@ -19,6 +20,7 @@ export async function POST(
     playType?: string;
     style?: string;
     swap?: [string, string];
+    reinforce?: string | null;
   } | null;
 
   const playType = body?.playType as PlayType | undefined;
@@ -46,8 +48,24 @@ export async function POST(
     swap = [a as F5Slot, b as F5Slot];
   }
 
+  let reinforce: ZoneId | null | undefined = undefined;
+  if (body && "reinforce" in body) {
+    if (body.reinforce === null || body.reinforce === "") {
+      reinforce = null;
+    } else if (ZONES.includes(body.reinforce as ZoneId)) {
+      reinforce = body.reinforce as ZoneId;
+    } else {
+      return NextResponse.json({ error: "Zona de refuerzo inválida" }, { status: 400 });
+    }
+  }
+
   try {
-    const match = await playTeamMoment(user, id, { playType, style, swap });
+    const match = await playTeamMoment(user, id, {
+      playType,
+      style,
+      swap,
+      reinforce,
+    });
     return NextResponse.json({ match: toTeamMatchView(match) });
   } catch (error) {
     if (error instanceof TeamGameError) {

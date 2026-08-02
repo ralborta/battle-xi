@@ -3,9 +3,10 @@
 import { Button } from "@/components/Button";
 import {
   SLOT_LABELS,
+  ZONE_LABELS,
   type F5Slot,
   type PlayType,
-  ZONE_LABELS,
+  type ZoneId,
 } from "@/lib/futbol5";
 import { cn } from "@/lib/cn";
 import Link from "next/link";
@@ -66,8 +67,13 @@ type MatchView = {
   momentsTotal: number;
   momentLabel: string;
   momentHelp: string;
+  pressure: ZoneId;
+  response: ZoneId;
+  pressureHelp: string;
   activeZone: string;
   activeSlots: F5Slot[];
+  rivalSlots: F5Slot[];
+  maxSwaps: number;
   styleUser: string;
   styleBot: string;
   connection: number;
@@ -81,6 +87,10 @@ type MatchView = {
     risk: string;
     ifWin: string;
     zonePower: number;
+    pressure: ZoneId;
+    pressureLabel: string;
+    response: ZoneId;
+    responseLabel: string;
   } | null;
   playOptions: PlayOption[];
   lastBreath?: boolean;
@@ -95,6 +105,7 @@ type MatchView = {
     winner: string;
     hint: string;
     why?: string;
+    tacticCorrect?: boolean;
     duels?: SlotDuel[];
   }>;
   you: PublicPlayer[];
@@ -114,6 +125,9 @@ export function PartidoClient({ initial }: { initial: MatchView }) {
   );
   const [swapA, setSwapA] = useState<F5Slot | null>(null);
   const [pendingSwap, setPendingSwap] = useState<[F5Slot, F5Slot] | null>(null);
+  const [reinforce, setReinforce] = useState<ZoneId | null>(
+    initial.response ?? null,
+  );
   const [step, setStep] = useState<"rival" | "you">("rival");
 
   const lastMoment = match.moments[match.moments.length - 1];
@@ -129,6 +143,7 @@ export function PartidoClient({ initial }: { initial: MatchView }) {
           playType,
           style,
           swap: pendingSwap ?? undefined,
+          reinforce,
         }),
       });
       const data = await res.json().catch(() => null);
@@ -139,6 +154,7 @@ export function PartidoClient({ initial }: { initial: MatchView }) {
       setMatch(data.match);
       setPendingSwap(null);
       setSwapA(null);
+      setReinforce(data.match.response ?? null);
       setStep("rival");
       setStyle((data.match.styleUser as StyleOpt) || style);
       router.refresh();
@@ -148,6 +164,7 @@ export function PartidoClient({ initial }: { initial: MatchView }) {
   };
 
   const onTapSlot = (slot: F5Slot) => {
+    if (pendingSwap) return; // ya usaste el único movimiento
     if (!swapA) {
       setSwapA(slot);
       return;
@@ -180,7 +197,7 @@ export function PartidoClient({ initial }: { initial: MatchView }) {
             {match.scoreUser} — {match.scoreOpponent}
           </p>
           <p className="mt-2 text-sm text-text-tertiary">
-            Se gana sumando más puntos en los duelos de puesto a lo largo del partido.
+            Gana quien lee mejor las presiones del rival y arriesga bien el impulso.
           </p>
           {match.rewards && (
             <p className="mt-3 text-sm text-text-tertiary font-body">
@@ -228,10 +245,10 @@ export function PartidoClient({ initial }: { initial: MatchView }) {
   }
 
   const activeSet = new Set(match.activeSlots);
+  const rivalSet = new Set(match.rivalSlots ?? []);
 
   return (
     <div className="space-y-4">
-      {/* Marcador */}
       <div className="grid grid-cols-3 gap-2 text-center">
         <div className="rounded-2xl border border-border-soft bg-white/5 p-3">
           <div className="text-[10px] uppercase tracking-wider text-text-tertiary">Vos</div>
@@ -242,7 +259,6 @@ export function PartidoClient({ initial }: { initial: MatchView }) {
             Impulso
           </div>
           <div className="font-display text-2xl text-amber-300">{match.impulseLeft}</div>
-          <div className="text-[9px] text-text-muted">energía del partido</div>
         </div>
         <div className="rounded-2xl border border-border-soft bg-white/5 p-3">
           <div className="text-[10px] uppercase tracking-wider text-text-tertiary">Rival</div>
@@ -250,24 +266,14 @@ export function PartidoClient({ initial }: { initial: MatchView }) {
         </div>
       </div>
 
-      {/* Valores del equipo */}
       <ValuesPanel title="Tus valores" values={match.youValues} accent="cyan" />
       <ValuesPanel title="Valores rival" values={match.rivalValues} accent="violet" />
 
-      {/* Momento */}
       <div className="rounded-2xl border border-cyan-400/30 bg-cyan-400/10 p-4">
         <p className="text-[11px] font-display tracking-widest uppercase text-cyan-200/80 text-center">
-          Turno {match.momentIndex + 1}/{match.momentsTotal} ·{" "}
-          {ZONE_LABELS[match.activeZone as keyof typeof ZONE_LABELS] ?? match.activeZone}
-        </p>
-        <p className="mt-1 font-display text-2xl text-text-primary text-center">
-          {match.momentLabel}
+          Turno {match.momentIndex + 1}/{match.momentsTotal} · {match.momentLabel}
         </p>
         <p className="mt-2 text-xs text-text-tertiary text-center">{match.momentHelp}</p>
-        <p className="mt-2 text-[11px] text-text-muted text-center">
-          Pelean: {match.activeSlots.map((s) => SLOT_LABELS[s]).join(" · ")} · Poder zona{" "}
-          {match.yourZonePower} vs {match.rivalPlay?.zonePower ?? "—"}
-        </p>
       </div>
 
       {lastMoment?.why && (
@@ -283,59 +289,89 @@ export function PartidoClient({ initial }: { initial: MatchView }) {
         >
           <p className="font-display text-sm mb-1">Último turno</p>
           <p>{lastMoment.why}</p>
-          {lastMoment.duels?.map((d) => (
-            <p key={d.slot} className="mt-1 text-text-tertiary">
-              {d.why ?? `${SLOT_LABELS[d.slot]}: ${d.userPower} vs ${d.botPower}`}
-            </p>
-          ))}
         </div>
       )}
 
-      {/* Paso 1: rival */}
       {step === "rival" && match.rivalPlay && (
         <div className="rounded-2xl border border-violet-400/40 bg-violet-500/10 p-4 space-y-3">
           <p className="text-[11px] font-display tracking-widest uppercase text-violet-200/80">
             1 · El rival ya eligió
           </p>
           <p className="font-display text-xl text-text-primary">
-            {match.rivalPlay.label}
+            Presiona {match.rivalPlay.pressureLabel}
           </p>
+          <p className="text-sm text-text-secondary">{match.pressureHelp}</p>
           <p className="text-sm text-text-secondary">
-            Arriesga <span className="text-amber-200 font-display">{match.rivalPlay.cost}</span>{" "}
-            de impulso · riesgo {match.rivalPlay.risk}
+            Jugada: {match.rivalPlay.label} · arriesga{" "}
+            <span className="text-amber-200 font-display">{match.rivalPlay.cost}</span> ·
+            riesgo {match.rivalPlay.risk}
           </p>
-          <p className="text-xs text-text-tertiary">
-            Si el rival gana los duelos, {match.rivalPlay.ifWin.toLowerCase()}.
+          <p className="text-xs text-cyan-200">
+            Vos deberías reforzar:{" "}
+            <strong>{match.rivalPlay.responseLabel}</strong> (poder zona{" "}
+            {match.yourZonePower} vs {match.rivalPlay.zonePower})
           </p>
-          <p className="text-xs text-text-muted">
-            Estilo rival: {match.styleBot}. Ahora te toca responder.
-          </p>
-          {match.lastBreath && (
-            <p className="text-xs text-amber-200">
-              Te quedan solo {match.impulseLeft} de impulso. Vas a poder cerrar el
-              turno con una jugada segura usando lo que te queda.
-            </p>
-          )}
-          <Button variant="cyan" size="md" fullWidth onClick={() => setStep("you")}>
-            Elegir mi jugada
+          <p className="text-xs text-text-muted">Estilo rival: {match.styleBot}</p>
+          <Button
+            variant="cyan"
+            size="md"
+            fullWidth
+            onClick={() => {
+              setReinforce(match.response);
+              setStep("you");
+            }}
+          >
+            Elegir mi respuesta
           </Button>
         </div>
       )}
 
-      {/* Paso 2: vos */}
       {step === "you" && (
         <div className="space-y-3">
           <div className="rounded-2xl border border-cyan-400/40 bg-cyan-500/10 p-4 space-y-3">
             <p className="text-[11px] font-display tracking-widest uppercase text-cyan-200/80">
-              2 · Tu turno · ¿cuánto arriesgás?
+              2 · Tu respuesta táctica
             </p>
             <p className="text-xs text-text-tertiary">
-              El impulso que pongas se gasta. Si ganás los duelos de puesto, sumás puntos
-              según lo arriesgado. Si perdés, el rival suma según lo que él arriesgó.
+              Reforzá la zona correcta (bonus grande). Si te equivocás, hay penalidad. Podés
+              hacer 1 solo intercambio de puestos.
             </p>
 
             <div>
-              <p className="text-[11px] text-text-tertiary mb-2">Estrategia del equipo</p>
+              <p className="text-[11px] text-text-tertiary mb-2">
+                ¿Qué zona reforzás?
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                {(["defensa", "mediocampo", "ataque"] as ZoneId[]).map((z) => (
+                  <button
+                    key={z}
+                    type="button"
+                    onClick={() => setReinforce(z)}
+                    className={cn(
+                      "rounded-xl border px-2 py-3 text-center",
+                      reinforce === z
+                        ? z === match.response
+                          ? "border-cyan-400/60 bg-cyan-400/20 text-cyan-100"
+                          : "border-amber-400/50 bg-amber-400/15 text-amber-100"
+                        : "border-border-soft bg-white/5 text-text-tertiary",
+                    )}
+                  >
+                    <div className="font-display text-xs uppercase">{ZONE_LABELS[z]}</div>
+                    {z === match.response && (
+                      <div className="text-[9px] text-cyan-300 mt-1">sugerida</div>
+                    )}
+                  </button>
+                ))}
+              </div>
+              {reinforce && reinforce !== match.response && (
+                <p className="mt-2 text-[11px] text-amber-300">
+                  Ojo: el rival no pelea ahí. Vas a reforzar mal.
+                </p>
+              )}
+            </div>
+
+            <div>
+              <p className="text-[11px] text-text-tertiary mb-2">Estilo del equipo</p>
               <div className="grid grid-cols-3 gap-2">
                 {(["ataque", "equilibrio", "defensa"] as StyleOpt[]).map((s) => (
                   <button
@@ -353,14 +389,11 @@ export function PartidoClient({ initial }: { initial: MatchView }) {
                   </button>
                 ))}
               </div>
-              <p className="mt-1 text-[10px] text-text-muted">
-                Ataque sube el frente · Defensa el fondo · Equilibrio balancea.
-              </p>
             </div>
 
             <div>
               <p className="text-[11px] text-text-tertiary mb-2">
-                Mover fichas (tocá dos puestos para intercambiar)
+                Mover fichas (máx. 1 intercambio)
               </p>
               <div className="grid grid-cols-5 gap-1">
                 {(["POR", "DEF", "MC1", "MC2", "DEL"] as F5Slot[]).map((slot) => {
@@ -374,8 +407,9 @@ export function PartidoClient({ initial }: { initial: MatchView }) {
                       key={slot}
                       type="button"
                       onClick={() => onTapSlot(slot)}
+                      disabled={Boolean(pendingSwap) && !inSwap}
                       className={cn(
-                        "rounded-lg border px-1 py-2 text-center",
+                        "rounded-lg border px-1 py-2 text-center disabled:opacity-40",
                         selected || inSwap
                           ? "border-amber-400/60 bg-amber-400/15"
                           : activeSet.has(slot)
@@ -383,7 +417,9 @@ export function PartidoClient({ initial }: { initial: MatchView }) {
                             : "border-white/10 bg-black/20",
                       )}
                     >
-                      <div className="text-[9px] text-text-tertiary">{SLOT_LABELS[slot]}</div>
+                      <div className="text-[9px] text-text-tertiary">
+                        {SLOT_LABELS[slot].slice(0, 3)}
+                      </div>
                       <div className="font-mono text-xs text-amber-200">{p?.rating}</div>
                     </button>
                   );
@@ -391,8 +427,8 @@ export function PartidoClient({ initial }: { initial: MatchView }) {
               </div>
               {pendingSwap && (
                 <p className="mt-1 text-[11px] text-amber-200">
-                  Vas a intercambiar {SLOT_LABELS[pendingSwap[0]]} ↔{" "}
-                  {SLOT_LABELS[pendingSwap[1]]} al jugar.
+                  Intercambio listo: {SLOT_LABELS[pendingSwap[0]]} ↔{" "}
+                  {SLOT_LABELS[pendingSwap[1]]}
                   <button
                     type="button"
                     className="ml-2 underline"
@@ -406,18 +442,25 @@ export function PartidoClient({ initial }: { initial: MatchView }) {
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <LineupMini title="Vos" players={match.you} active={activeSet} accent="cyan" />
-            <LineupMini title="Rival" players={match.rival} active={activeSet} accent="violet" />
+            <LineupMini
+              title="Tu respuesta"
+              players={match.you}
+              active={activeSet}
+              accent="cyan"
+            />
+            <LineupMini
+              title="Su presión"
+              players={match.rival}
+              active={rivalSet}
+              accent="violet"
+            />
           </div>
 
           {error && <p className="text-sm text-red-400 text-center">{error}</p>}
 
-          {match.impulseLeft > 0 &&
-            match.playOptions.every((o) => !o.canAfford || o.lastBreath) && (
-              <p className="text-center text-sm text-amber-200">
-                Casi sin impulso: usá la jugada segura para cerrar el turno.
-              </p>
-            )}
+          <p className="text-center text-[11px] text-text-muted">
+            3 · Ahora sí: ¿cuánto impulso apostás?
+          </p>
 
           <div className="space-y-2">
             {match.playOptions.map((opt) => (
@@ -439,18 +482,13 @@ export function PartidoClient({ initial }: { initial: MatchView }) {
                   <span className="font-display text-base text-text-primary">
                     {opt.lastBreath ? "Último aliento (segura)" : opt.label}
                   </span>
-                  <span className="font-display text-amber-200">
-                    −{opt.cost} impulso
-                  </span>
+                  <span className="font-display text-amber-200">−{opt.cost}</span>
                 </div>
                 <div className="mt-1 text-[11px] text-text-tertiary">
                   {opt.canAfford
-                    ? `Riesgo ${opt.risk} · Si ganás ≈ +${opt.approxWinPoints} pts · ${opt.ifWin}`
-                    : `Necesitás ${opt.cost} de impulso (tenés ${match.impulseLeft})`}
+                    ? `Riesgo ${opt.risk} · Si ganás el choque ≈ +${opt.approxWinPoints} pts`
+                    : `Necesitás más impulso (tenés ${match.impulseLeft})`}
                 </div>
-                {opt.canAfford && (
-                  <div className="text-[11px] text-text-muted">{opt.ifLose}</div>
-                )}
               </button>
             ))}
           </div>
@@ -544,7 +582,7 @@ function LineupMini({
             key={slot}
             className={cn(
               "flex justify-between text-[11px] px-1 py-0.5 rounded",
-              active.has(slot) ? "bg-white/10" : "opacity-50",
+              active.has(slot) ? "bg-white/10" : "opacity-40",
             )}
           >
             <span className="truncate">
