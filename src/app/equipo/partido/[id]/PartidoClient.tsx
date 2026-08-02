@@ -52,6 +52,7 @@ type PlayOption = {
   ifLose: string;
   canAfford: boolean;
   approxWinPoints: number;
+  lastBreath?: boolean;
 };
 
 type MatchView = {
@@ -82,6 +83,7 @@ type MatchView = {
     zonePower: number;
   } | null;
   playOptions: PlayOption[];
+  lastBreath?: boolean;
   moments: Array<{
     label: string;
     playType: string;
@@ -302,12 +304,20 @@ export function PartidoClient({ initial }: { initial: MatchView }) {
             Arriesga <span className="text-amber-200 font-display">{match.rivalPlay.cost}</span>{" "}
             de impulso · riesgo {match.rivalPlay.risk}
           </p>
-          <p className="text-xs text-text-tertiary">{match.rivalPlay.ifWin} si gana los duelos.</p>
+          <p className="text-xs text-text-tertiary">
+            Si el rival gana los duelos, {match.rivalPlay.ifWin.toLowerCase()}.
+          </p>
           <p className="text-xs text-text-muted">
             Estilo rival: {match.styleBot}. Ahora te toca responder.
           </p>
+          {match.lastBreath && (
+            <p className="text-xs text-amber-200">
+              Te quedan solo {match.impulseLeft} de impulso. Vas a poder cerrar el
+              turno con una jugada segura usando lo que te queda.
+            </p>
+          )}
           <Button variant="cyan" size="md" fullWidth onClick={() => setStep("you")}>
-            Ver mi jugada
+            Elegir mi jugada
           </Button>
         </div>
       )}
@@ -402,6 +412,13 @@ export function PartidoClient({ initial }: { initial: MatchView }) {
 
           {error && <p className="text-sm text-red-400 text-center">{error}</p>}
 
+          {match.impulseLeft > 0 &&
+            match.playOptions.every((o) => !o.canAfford || o.lastBreath) && (
+              <p className="text-center text-sm text-amber-200">
+                Casi sin impulso: usá la jugada segura para cerrar el turno.
+              </p>
+            )}
+
           <div className="space-y-2">
             {match.playOptions.map((opt) => (
               <button
@@ -419,15 +436,21 @@ export function PartidoClient({ initial }: { initial: MatchView }) {
                 )}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-display text-base text-text-primary">{opt.label}</span>
+                  <span className="font-display text-base text-text-primary">
+                    {opt.lastBreath ? "Último aliento (segura)" : opt.label}
+                  </span>
                   <span className="font-display text-amber-200">
                     −{opt.cost} impulso
                   </span>
                 </div>
                 <div className="mt-1 text-[11px] text-text-tertiary">
-                  Riesgo {opt.risk} · Si ganás ≈ +{opt.approxWinPoints} pts · {opt.ifWin}
+                  {opt.canAfford
+                    ? `Riesgo ${opt.risk} · Si ganás ≈ +${opt.approxWinPoints} pts · ${opt.ifWin}`
+                    : `Necesitás ${opt.cost} de impulso (tenés ${match.impulseLeft})`}
                 </div>
-                <div className="text-[11px] text-text-muted">{opt.ifLose}</div>
+                {opt.canAfford && (
+                  <div className="text-[11px] text-text-muted">{opt.ifLose}</div>
+                )}
               </button>
             ))}
           </div>

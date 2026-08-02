@@ -355,11 +355,12 @@ function resolveDuels(
   userPlay: PlayType,
   botPlay: PlayType,
   seed: string,
+  userCostScale = 1,
 ): { duels: SlotDuel[]; userPoints: number; botPoints: number; userPower: number; botPower: number } {
   const slots = momentSlots(momentIndex);
   const userInfo = PLAY_INFO[userPlay];
   const botInfo = PLAY_INFO[botPlay];
-  const userCost = PLAY_COST[userPlay];
+  const userCost = PLAY_COST[userPlay] * userCostScale;
   const botCost = PLAY_COST[botPlay];
   const userBase = userCost / slots.length;
   const botBase = botCost / slots.length;
@@ -452,9 +453,22 @@ export async function playTeamMoment(
   if (!match) throw new TeamGameError("No encontramos ese partido", 404);
   if (match.status === "finished") throw new TeamGameError("Este partido ya terminó", 409);
 
-  const cost = PLAY_COST[playType];
-  if (match.impulseLeft < cost) {
-    throw new TeamGameError("No te alcanza el impulso para esa jugada", 409);
+  const nominal = PLAY_COST[playType];
+  let cost = nominal;
+
+  if (match.impulseLeft <= 0) {
+    throw new TeamGameError("No te queda impulso. Empezá otro partido.", 409);
+  }
+
+  if (match.impulseLeft < nominal) {
+    // Último aliento: podés cerrar el turno con lo que te queda (solo jugada segura).
+    if (playType !== "seguro") {
+      throw new TeamGameError(
+        `Solo te quedan ${match.impulseLeft} de impulso. Usá la jugada segura.`,
+        409,
+      );
+    }
+    cost = match.impulseLeft;
   }
 
   let lineupUser = asLineup(match.lineupUser);
@@ -477,6 +491,7 @@ export async function playTeamMoment(
     playType,
     botPlay,
     match.seed,
+    cost / nominal, // escala puntos si jugás con menos impulso
   );
 
   let winner: MomentLog["winner"] = "tie";
@@ -669,12 +684,24 @@ export function toTeamMatchView(match: TeamMatch) {
         }
       : null,
     yourZonePower: userZone,
-    playOptions: (Object.keys(PLAY_COST) as PlayType[]).map((playType) => ({
-      playType,
-      ...PLAY_INFO[playType],
-      canAfford: match.impulseLeft >= PLAY_COST[playType],
-      approxWinPoints: estimateWin(playType),
-    })),
+    lastBreath: match.impulseLeft > 0 && match.impulseLeft < PLAY_COST.seguro,
+    playOptions: (Object.keys(PLAY_COST) as PlayType[]).map((playType) => {
+      const nominal = PLAY_COST[playType];
+      const lastBreath =
+        playType === "seguro" &&
+        match.impulseLeft > 0 &&
+        match.impulseLeft < nominal;
+      return {
+        playType,
+        ...PLAY_INFO[playType],
+        cost: lastBreath ? match.impulseLeft : nominal,
+        canAfford:
+          match.impulseLeft >= nominal ||
+          (playType === "seguro" && match.impulseLeft > 0),
+        approxWinPoints: estimateWin(playType),
+        lastBreath,
+      };
+    }),
     rewards:
       match.status === "finished"
         ? {

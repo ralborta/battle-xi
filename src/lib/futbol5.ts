@@ -119,10 +119,11 @@ export const POSITION_WIN_XP = 25;
 
 export type PlayType = "seguro" | "combinado" | "total";
 
+/** Costos pensados para 4 turnos con 100 de impulso (siempre podés cerrar el partido). */
 export const PLAY_COST: Record<PlayType, number> = {
-  seguro: 15,
-  combinado: 25,
-  total: 40,
+  seguro: 10,
+  combinado: 20,
+  total: 35,
 };
 
 export const PLAY_LABELS: Record<PlayType, string> = {
@@ -145,7 +146,7 @@ export const PLAY_INFO: Record<
   }
 > = {
   seguro: {
-    cost: 15,
+    cost: 10,
     label: "Jugada segura",
     risk: "Bajo",
     ifWin: "Sumás pocos puntos",
@@ -154,7 +155,7 @@ export const PLAY_INFO: Record<
     loseMult: 0.5,
   },
   combinado: {
-    cost: 25,
+    cost: 20,
     label: "Jugada media",
     risk: "Medio",
     ifWin: "Sumás puntos normales",
@@ -163,7 +164,7 @@ export const PLAY_INFO: Record<
     loseMult: 1,
   },
   total: {
-    cost: 40,
+    cost: 35,
     label: "Jugada arriesgada",
     risk: "Alto",
     ifWin: "Sumás muchos puntos",
