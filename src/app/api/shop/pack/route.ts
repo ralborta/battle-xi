@@ -22,6 +22,12 @@ export async function POST() {
         countryFlag: c.countryFlag,
         imageUrl: c.imageUrl,
         ability: c.ability,
+        vel: c.vel,
+        tir: c.tir,
+        pas: c.pas,
+        reg: c.reg,
+        def: c.def,
+        fis: c.fis,
       })),
     });
   } catch (error) {
