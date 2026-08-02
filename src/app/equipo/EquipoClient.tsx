@@ -9,7 +9,11 @@ import {
   type F5Slot,
   SLOT_LABELS,
   positionFit,
+  rolePower,
   slotPosition,
+  zoneOfSlot,
+  zoneRawPower,
+  type ZoneId,
 } from "@/lib/futbol5";
 import { cn } from "@/lib/cn";
 import { Shuffle, Swords, UserRound } from "lucide-react";
@@ -66,6 +70,35 @@ export function EquipoClient({
   const usedIds = new Set(
     squad.slots.map((s) => s.cardId).filter(Boolean) as string[],
   );
+
+  const filledCount = F5_SLOTS.filter((s) => bySlot.get(s)).length;
+  const teamReady = filledCount === F5_SLOTS.length;
+
+  const zoneScores = useMemo(() => {
+    const zones: ZoneId[] = ["ataque", "mediocampo", "defensa"];
+    return zones.map((zone) => {
+      const members = F5_SLOTS.filter((s) => zoneOfSlot(s) === zone)
+        .map((s) => bySlot.get(s))
+        .filter(Boolean) as CardDTO[];
+      if (members.length === 0) return { zone, power: 0, avgRating: 0 };
+      const powers = members.map((c) => {
+        const slot = F5_SLOTS.find((s) => bySlot.get(s)?.id === c.id)!;
+        const fit = positionFit(c.position, slot);
+        return ((rolePower(c, c.position) + zoneRawPower(c, zone)) / 2) * fit;
+      });
+      const power = Math.round(powers.reduce((a, b) => a + b, 0) / powers.length);
+      const avgRating = Math.round(
+        members.reduce((a, c) => a + c.rating, 0) / members.length,
+      );
+      return { zone, power, avgRating };
+    });
+  }, [bySlot]);
+
+  const wrongSlots = F5_SLOTS.filter((s) => {
+    const c = bySlot.get(s);
+    if (!c) return false;
+    return positionFit(c.position, s) < 0.93;
+  });
 
   const saveSlots = async (slots: Partial<Record<F5Slot, string | null>>) => {
     setError(null);
@@ -198,7 +231,7 @@ export function EquipoClient({
                 setSelectedSlot(null);
               }}
             >
-              Dejar Academia
+              Quitar del puesto
             </button>
           </div>
           <div className="flex gap-3 overflow-x-auto pb-2">
@@ -244,6 +277,33 @@ export function EquipoClient({
         </div>
       )}
 
+      <div className="rounded-2xl border border-border-soft bg-white/5 p-3">
+        <p className="text-[11px] font-display tracking-wider uppercase text-text-tertiary mb-2">
+          Equilibrio del equipo · {filledCount}/5
+        </p>
+        <div className="grid grid-cols-3 gap-2">
+          {zoneScores.map((z) => (
+            <div key={z.zone} className="text-center rounded-xl bg-black/25 px-2 py-2">
+              <div className="text-[10px] uppercase text-text-muted capitalize">{z.zone}</div>
+              <div className="font-display text-lg text-cyan-200">{z.power || "—"}</div>
+              <div className="text-[10px] text-text-tertiary">
+                {z.avgRating ? `OVR ${z.avgRating}` : "vacío"}
+              </div>
+            </div>
+          ))}
+        </div>
+        {wrongSlots.length > 0 && (
+          <p className="mt-2 text-[11px] text-amber-300/90">
+            Fuera de puesto: {wrongSlots.map((s) => SLOT_LABELS[s]).join(", ")}. Rinden menos.
+          </p>
+        )}
+        {!teamReady && (
+          <p className="mt-2 text-[11px] text-amber-200">
+            Completá los 5 puestos con fichas reales para poder jugar.
+          </p>
+        )}
+      </div>
+
       {error && <p className="text-sm text-red-400 text-center">{error}</p>}
 
       <div className="grid grid-cols-2 gap-3">
@@ -263,14 +323,14 @@ export function EquipoClient({
           fullWidth
           icon={<Swords className="w-4 h-4" />}
           onClick={() => void startMatch()}
-          disabled={starting}
+          disabled={starting || !teamReady}
         >
           {starting ? "Buscando…" : "Jugar partido"}
         </Button>
       </div>
 
       <p className="text-center text-[11px] text-text-muted font-body">
-        Fútbol 5 · Por ahora solo sumás puntos. Torneos más adelante.
+        Puestos correctos + equilibrio + OVR alto = más puntos en cada duelo.
       </p>
     </div>
   );

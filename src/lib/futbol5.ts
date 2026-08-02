@@ -98,6 +98,25 @@ export const MOMENT_LABELS = [
   "Decisivo",
 ] as const;
 
+/** Zona que se disputa en cada momento (incluye defensa). */
+export function momentZone(index: number): ZoneId {
+  if (index === 0) return "defensa";
+  if (index === 1) return "mediocampo";
+  if (index === 2) return "ataque";
+  return "ataque"; // Decisivo: se resuelve aparte (todas las posiciones)
+}
+
+/** Slots que pelean en ese momento. El decisivo enfrenta a los 5. */
+export function momentSlots(index: number): F5Slot[] {
+  if (index === 0) return ["POR", "DEF"];
+  if (index === 1) return ["MC1", "MC2"];
+  if (index === 2) return ["DEL"];
+  return [...F5_SLOTS];
+}
+
+/** XP que gana una carta al ganar su duelo de puesto. */
+export const POSITION_WIN_XP = 25;
+
 export type PlayType = "seguro" | "combinado" | "total";
 
 export const PLAY_COST: Record<PlayType, number> = {
