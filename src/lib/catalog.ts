@@ -3,6 +3,7 @@ import "server-only";
 import type { CardSource, PlayerTemplate, Prisma, User } from "@/generated/prisma/client";
 import { avatarForSlug, CATALOG_SEED } from "@/lib/catalog-data";
 import { prisma } from "@/lib/db";
+import { assertCollectionRoom } from "@/lib/collection-service";
 import { PACK_COST_GEMS, PACK_SIZE, STARTER_CARD_COUNT } from "@/lib/futbol5";
 
 function pickRandom<T>(items: T[], count: number): T[] {
@@ -142,27 +143,27 @@ export async function openPack(user: User): Promise<{ cards: Awaited<ReturnType<
     throw Object.assign(new Error("Te faltan gemas para abrir el sobre"), { status: 409 });
   }
 
+  await assertCollectionRoom(user.id, PACK_SIZE);
+
   const templates = await prisma.playerTemplate.findMany({ where: { published: true } });
   if (templates.length < PACK_SIZE) {
     throw Object.assign(new Error("El catálogo todavía no tiene suficientes fichas"), { status: 503 });
   }
 
   const picked = pickRandom(templates, PACK_SIZE);
+  const payloads = picked.map((t) => cardFromTemplate(user.id, t, "pack"));
 
-  const [, , cards] = await prisma.$transaction([
-    prisma.user.update({
+  const cards = await prisma.$transaction(async (tx) => {
+    await tx.user.update({
       where: { id: user.id },
       data: { gems: { decrement: PACK_COST_GEMS } },
-    }),
-    prisma.card.createMany({
-      data: picked.map((t) => cardFromTemplate(user.id, t, "pack")),
-    }),
-    prisma.card.findMany({
-      where: { userId: user.id, source: "pack" },
-      orderBy: { createdAt: "desc" },
-      take: PACK_SIZE,
-    }),
-  ]);
+    });
+    const created = [];
+    for (const data of payloads) {
+      created.push(await tx.card.create({ data }));
+    }
+    return created;
+  });
 
   return { cards, gems: user.gems - PACK_COST_GEMS };
 }

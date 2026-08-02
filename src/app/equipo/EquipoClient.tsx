@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/Button";
+import { CardDetailSheet } from "@/components/CardDetailSheet";
 import { PlayerCard } from "@/components/PlayerCard";
 import type { Position } from "@/components/PlayerCard";
 import type { Rarity } from "@/lib/rarity";
@@ -17,6 +18,7 @@ import {
 } from "@/lib/futbol5";
 import { cn } from "@/lib/cn";
 import { Shuffle, Swords, UserRound } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 
@@ -60,6 +62,8 @@ export function EquipoClient({
   const [pending, startTransition] = useTransition();
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [detailCard, setDetailCard] = useState<CardDTO | null>(null);
+  const [detailSlot, setDetailSlot] = useState<F5Slot | null>(null);
 
   const bySlot = useMemo(() => {
     const map = new Map<string, CardDTO | null>();
@@ -186,36 +190,78 @@ export function EquipoClient({
             slot="DEL"
             card={bySlot.get("DEL") ?? null}
             active={selectedSlot === "DEL"}
-            onClick={() => setSelectedSlot("DEL")}
+            onClick={() => {
+              const c = bySlot.get("DEL");
+              if (c) {
+                setDetailCard(c);
+                setDetailSlot("DEL");
+              } else setSelectedSlot("DEL");
+            }}
+            onChange={() => setSelectedSlot("DEL")}
           />
           <div className="grid grid-cols-2 gap-3">
             <SlotButton
               slot="MC1"
               card={bySlot.get("MC1") ?? null}
               active={selectedSlot === "MC1"}
-              onClick={() => setSelectedSlot("MC1")}
+              onClick={() => {
+                const c = bySlot.get("MC1");
+                if (c) {
+                  setDetailCard(c);
+                  setDetailSlot("MC1");
+                } else setSelectedSlot("MC1");
+              }}
+              onChange={() => setSelectedSlot("MC1")}
             />
             <SlotButton
               slot="MC2"
               card={bySlot.get("MC2") ?? null}
               active={selectedSlot === "MC2"}
-              onClick={() => setSelectedSlot("MC2")}
+              onClick={() => {
+                const c = bySlot.get("MC2");
+                if (c) {
+                  setDetailCard(c);
+                  setDetailSlot("MC2");
+                } else setSelectedSlot("MC2");
+              }}
+              onChange={() => setSelectedSlot("MC2")}
             />
           </div>
           <SlotButton
             slot="DEF"
             card={bySlot.get("DEF") ?? null}
             active={selectedSlot === "DEF"}
-            onClick={() => setSelectedSlot("DEF")}
+            onClick={() => {
+              const c = bySlot.get("DEF");
+              if (c) {
+                setDetailCard(c);
+                setDetailSlot("DEF");
+              } else setSelectedSlot("DEF");
+            }}
+            onChange={() => setSelectedSlot("DEF")}
           />
           <SlotButton
             slot="POR"
             card={bySlot.get("POR") ?? null}
             active={selectedSlot === "POR"}
-            onClick={() => setSelectedSlot("POR")}
+            onClick={() => {
+              const c = bySlot.get("POR");
+              if (c) {
+                setDetailCard(c);
+                setDetailSlot("POR");
+              } else setSelectedSlot("POR");
+            }}
+            onChange={() => setSelectedSlot("POR")}
           />
         </div>
       </div>
+
+      <p className="text-center text-[11px] text-text-muted">
+        Tocá un puesto ocupado para ver la ficha · vacío para elegir de tu colección.{" "}
+        <Link href="/coleccion" className="text-cyan-300 underline">
+          Ver colección
+        </Link>
+      </p>
 
       {selectedSlot && (
         <div className="rounded-2xl border border-border-soft bg-white/5 p-3">
@@ -277,6 +323,30 @@ export function EquipoClient({
         </div>
       )}
 
+      {detailCard && (
+        <CardDetailSheet
+          card={{
+            ...detailCard,
+            inSquadSlot: detailSlot,
+          }}
+          canAssign
+          onClose={() => {
+            setDetailCard(null);
+            setDetailSlot(null);
+          }}
+          onAssigned={() => {
+            setDetailCard(null);
+            setDetailSlot(null);
+            void fetch("/api/squad")
+              .then((r) => r.json())
+              .then((data) => {
+                if (data.squad) setSquad(mapSquad(data.squad));
+              });
+            startTransition(() => router.refresh());
+          }}
+        />
+      )}
+
       <div className="rounded-2xl border border-border-soft bg-white/5 p-3">
         <p className="text-[11px] font-display tracking-wider uppercase text-text-tertiary mb-2">
           Equilibrio del equipo · {filledCount}/5
@@ -336,52 +406,88 @@ export function EquipoClient({
   );
 }
 
+function mapSquad(raw: {
+  id: string;
+  style: SquadDTO["style"];
+  captainSlot: string | null;
+  slots: Array<{
+    slotKey: string;
+    cardId: string | null;
+    card: CardDTO | null;
+  }>;
+}): SquadDTO {
+  return {
+    id: raw.id,
+    style: raw.style,
+    captainSlot: raw.captainSlot,
+    slots: raw.slots.map((s) => ({
+      slotKey: s.slotKey,
+      cardId: s.cardId,
+      card: s.card,
+    })),
+  };
+}
+
 function SlotButton({
   slot,
   card,
   active,
   onClick,
+  onChange,
 }: {
   slot: F5Slot;
   card: CardDTO | null;
   active: boolean;
   onClick: () => void;
+  onChange?: () => void;
 }) {
-  const academy = !card;
+  const empty = !card;
   const fit = card ? positionFit(card.position, slot) : 1;
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <div
       className={cn(
         "mx-auto w-full max-w-[200px] rounded-2xl border px-3 py-3 text-left transition",
         active
           ? "border-cyan-400/60 bg-cyan-400/15"
-          : "border-white/15 bg-black/25 hover:bg-black/35",
+          : "border-white/15 bg-black/25",
       )}
     >
-      <div className="text-[10px] font-display tracking-widest uppercase text-text-tertiary">
-        {SLOT_LABELS[slot]} · {slotPosition(slot)}
-      </div>
-      <div className="mt-1 flex items-center gap-2">
-        <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">
-          {academy ? (
-            <UserRound className="w-4 h-4 text-text-muted" />
-          ) : (
-            <span className="text-sm">{card.countryFlag}</span>
-          )}
+      <button type="button" onClick={onClick} className="w-full text-left">
+        <div className="text-[10px] font-display tracking-widest uppercase text-text-tertiary">
+          {SLOT_LABELS[slot]} · {slotPosition(slot)}
         </div>
-        <div className="min-w-0">
-          <div className="font-display text-sm text-text-primary truncate">
-            {academy ? "Academia" : card.playerName}
+        <div className="mt-1 flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center overflow-hidden">
+            {empty ? (
+              <UserRound className="w-4 h-4 text-text-muted" />
+            ) : card.imageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={card.imageUrl} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-sm">{card.countryFlag}</span>
+            )}
           </div>
-          <div className="text-[11px] text-text-tertiary">
-            {academy ? "Carta temporal" : `OVR ${card.rating}`}
-            {!academy && fit < 1 ? " · fuera de puesto" : ""}
+          <div className="min-w-0">
+            <div className="font-display text-sm text-text-primary truncate">
+              {empty ? "Vacío" : card.playerName}
+            </div>
+            <div className="text-[11px] text-text-tertiary">
+              {empty ? "Elegí ficha" : `OVR ${card.rating}`}
+              {!empty && fit < 1 ? " · fuera de puesto" : ""}
+            </div>
           </div>
         </div>
-      </div>
-    </button>
+      </button>
+      {!empty && onChange && (
+        <button
+          type="button"
+          onClick={onChange}
+          className="mt-2 text-[11px] text-cyan-300 underline"
+        >
+          Cambiar
+        </button>
+      )}
+    </div>
   );
 }

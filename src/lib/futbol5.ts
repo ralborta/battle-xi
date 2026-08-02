@@ -142,6 +142,23 @@ export const PACK_COST_GEMS = 75;
 export const PACK_SIZE = 5;
 export const STARTER_CARD_COUNT = 10;
 
+/** Tope de fichas en el club (fuerza a vender o no abrir sobres). */
+export const COLLECTION_MAX = 40;
+
+/** Gemas al vender según rareza. */
+export const SELL_GEMS: Record<string, number> = {
+  common: 8,
+  pro: 15,
+  rare: 25,
+  elite: 40,
+  champion: 65,
+  legend: 100,
+};
+
+export function sellPriceForRarity(rarity: string): number {
+  return SELL_GEMS[rarity] ?? 8;
+}
+
 export function clampPower(value: number): number {
   return Math.max(40, Math.min(100, Math.round(value)));
 }

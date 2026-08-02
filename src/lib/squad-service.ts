@@ -48,6 +48,21 @@ export async function updateSquadLineup(
   const ownedIds = new Set(owned.map((c) => c.id));
 
   const used = new Set<string>();
+  const incomingIds = Object.values(input.slots).filter(
+    (id): id is string => typeof id === "string",
+  );
+
+  // Si una ficha entra a un puesto, la sacamos de cualquier otro.
+  if (incomingIds.length > 0) {
+    await prisma.squadSlot.updateMany({
+      where: {
+        squadId: squad.id,
+        cardId: { in: incomingIds },
+        NOT: { slotKey: { in: Object.keys(input.slots) } },
+      },
+      data: { cardId: null },
+    });
+  }
 
   for (const slotKey of F5_SLOTS) {
     if (!(slotKey in input.slots)) continue;

@@ -1,6 +1,7 @@
 import { BottomNav } from "@/components/BottomNav";
 import { PageShell } from "@/components/PageShell";
 import { getCurrentUser } from "@/lib/auth";
+import { prisma } from "@/lib/db";
 import { ENERGY_MAX, ENERGY_REFILL_COST, currentEnergy } from "@/lib/game";
 import { Gem, ScanLine } from "lucide-react";
 import Link from "next/link";
@@ -13,6 +14,7 @@ export default async function TiendaPage() {
   if (!user) redirect("/login");
 
   const { energy } = currentEnergy(user.energy, user.energyUpdatedAt);
+  const collectionCount = await prisma.card.count({ where: { userId: user.id } });
 
   return (
     <>
@@ -44,7 +46,7 @@ export default async function TiendaPage() {
         <h2 className="font-display text-lg tracking-wide text-text-secondary mb-3">
           Sobres
         </h2>
-        <AbrirSobre gems={user.gems} />
+        <AbrirSobre gems={user.gems} collectionCount={collectionCount} />
 
         <h2 className="font-display text-lg tracking-wide text-text-secondary mt-7 mb-3">
           Mejoras
