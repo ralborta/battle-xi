@@ -91,7 +91,7 @@ function academyPlayer(slot: F5Slot): LineupPlayer {
     rarity: "common",
     rating: base,
     flag: "⚪",
-    imageUrl: "/avatars/player-default.svg",
+    imageUrl: "/avatars/avatar-01.png",
     ability: "none",
     isAcademy: true,
     vel: base - 4,

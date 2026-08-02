@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { CardSource, PlayerTemplate, Prisma, User } from "@/generated/prisma/client";
-import { CATALOG_SEED, DEFAULT_AVATAR } from "@/lib/catalog-data";
+import { avatarForSlug, CATALOG_SEED } from "@/lib/catalog-data";
 import { prisma } from "@/lib/db";
 import { PACK_COST_GEMS, PACK_SIZE, STARTER_CARD_COUNT } from "@/lib/futbol5";
 
@@ -15,9 +15,40 @@ function pickRandom<T>(items: T[], count: number): T[] {
   return out;
 }
 
+/** Sincroniza avatares del catálogo (y cartas ligadas) cuando cambian los assets. */
+async function syncCatalogAvatars(): Promise<void> {
+  const templates = await prisma.playerTemplate.findMany({
+    select: { id: true, slug: true, imageUrl: true },
+  });
+
+  for (const t of templates) {
+    const next = avatarForSlug(t.slug);
+    if (t.imageUrl === next) continue;
+    await prisma.$transaction([
+      prisma.playerTemplate.update({ where: { id: t.id }, data: { imageUrl: next } }),
+      prisma.card.updateMany({
+        where: { templateId: t.id, source: { in: ["starter", "pack"] } },
+        data: { imageUrl: next },
+      }),
+    ]);
+  }
+}
+
 export async function ensureCatalogSeeded(): Promise<number> {
   const existing = await prisma.playerTemplate.count();
-  if (existing > 0) return existing;
+  if (existing > 0) {
+    // Solo reescribe imágenes si todavía hay el placeholder viejo.
+    const stale = await prisma.playerTemplate.count({
+      where: {
+        OR: [
+          { imageUrl: { contains: "player-default" } },
+          { imageUrl: { endsWith: ".svg" } },
+        ],
+      },
+    });
+    if (stale > 0) await syncCatalogAvatars();
+    return existing;
+  }
 
   await prisma.playerTemplate.createMany({
     data: CATALOG_SEED.map((p) => ({
@@ -30,7 +61,7 @@ export async function ensureCatalogSeeded(): Promise<number> {
       rarity: p.rarity,
       rating: p.rating,
       ability: p.ability,
-      imageUrl: DEFAULT_AVATAR,
+      imageUrl: avatarForSlug(p.slug),
       vel: p.vel,
       tir: p.tir,
       pas: p.pas,

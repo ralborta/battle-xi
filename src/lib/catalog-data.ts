@@ -19,7 +19,26 @@ export interface CatalogSeed {
   fis: number;
 }
 
-const AVATAR = "/avatars/player-default.svg";
+/** Avatares genéricos (no son jugadores reales): se rotan en el catálogo. */
+export const CATALOG_AVATARS = [
+  "/avatars/avatar-01.png",
+  "/avatars/avatar-02.png",
+  "/avatars/avatar-03.png",
+  "/avatars/avatar-04.png",
+  "/avatars/avatar-05.png",
+  "/avatars/avatar-06.png",
+] as const;
+
+export const DEFAULT_AVATAR = CATALOG_AVATARS[0];
+
+export const PACK_ART = "/packs/serie-01.png";
+
+/** Avatar estable por slug: el mismo jugador siempre muestra la misma cara. */
+export function avatarForSlug(slug: string): string {
+  let hash = 0;
+  for (let i = 0; i < slug.length; i++) hash = (hash + slug.charCodeAt(i) * (i + 1)) % 997;
+  return CATALOG_AVATARS[hash % CATALOG_AVATARS.length];
+}
 
 function p(
   slug: string,
@@ -118,5 +137,3 @@ export const CATALOG_SEED: CatalogSeed[] = [
   p("de-kroos", "Kroos", "DE", "🇩🇪", "MC", [], "legend", 88, "cerebro", [58, 80, 94, 84, 68, 70]),
   p("de-musiala", "Musiala", "DE", "🇩🇪", "MC", ["EXT", "DEL"], "champion", 88, "cerebro", [86, 82, 86, 92, 48, 72]),
 ];
-
-export const DEFAULT_AVATAR = AVATAR;
